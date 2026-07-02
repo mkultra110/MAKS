@@ -1,6 +1,6 @@
 // Vignettes 3D (pièces et véhicules) rendues hors-écran, avec cache.
 import * as THREE from 'three';
-import { createRenderer, studioLights, disposeModel } from './render3d.js';
+import { createRenderer, studioLights, disposeModel, toonGradient, INK } from './render3d.js';
 import { createPartModel, createCarModel, poseCarStatic, catHead } from './models3d.js';
 import { buildCarSpec } from './car.js';
 import { COPILOTS } from './data.js';
@@ -17,10 +17,18 @@ function ensure() {
   scene = new THREE.Scene();
   scene.background = null;
   studioLights(scene);
-  podium = new THREE.Mesh(
+  podium = new THREE.Group();
+  const top = new THREE.Mesh(
     new THREE.CylinderGeometry(2.6, 2.8, 0.3, 40),
-    new THREE.MeshToonMaterial({ color: 0xffb800 })
+    new THREE.MeshToonMaterial({ color: 0xffb800, gradientMap: toonGradient() })
   );
+  // jupe d'encre : le podium garde un contour même en vignette
+  const skirt = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.84, 2.84, 0.08, 40),
+    new THREE.MeshBasicMaterial({ color: INK })
+  );
+  skirt.position.y = -0.14;
+  podium.add(top, skirt);
   scene.add(podium);
   camera = new THREE.PerspectiveCamera(32, 320 / 240, 0.1, 100);
   holder = new THREE.Group();
@@ -82,7 +90,8 @@ export function carSnapshot(loadout, { dir = 1, w = 560, h = 320 } = {}) {
   const spec = buildCarSpec(loadout);
   const model = createCarModel(spec);
   poseCarStatic(model, 1);
-  const fit = Math.max(spec.body.w * 0.02 * 1.9, 2.6);
+  if (model.userData.blob) model.userData.blob.visible = false; // trop boueux en vignette
+  const fit = Math.max(spec.body.w * 0.02 * 1.55, 2.2);
   model.rotation.y = dir === 1 ? -0.55 : Math.PI + 0.55;
   return snapshot(model, fit, { w, h, podiumY: 0, lookY: fit * 0.16 });
 }

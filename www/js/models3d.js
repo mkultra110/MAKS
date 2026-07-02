@@ -109,7 +109,7 @@ function bodyGeometry(type, bw, bh, depth) {
 // ---------- tête de chat pilote ----------
 export function catHead(size = 0.28, color = 0xffd9a0) {
   const g = new THREE.Group();
-  const skin = mat('catSkin' + color, { color, roughness: 0.7, emissive: color, emissiveIntensity: 0.32 });
+  const skin = mat('catSkin' + color, { color, emissive: color, emissiveIntensity: 0.1 });
   const dark = mat('catDark', { color: 0x2a2438, roughness: 0.6 });
   const head = new THREE.Mesh(new THREE.SphereGeometry(size, 18, 14), skin);
   g.add(head);
@@ -120,7 +120,7 @@ export function catHead(size = 0.28, color = 0xffd9a0) {
     ear.rotation.z = -sx * 0.35;
     g.add(ear);
   }
-  const eyeGeo = new THREE.SphereGeometry(size * 0.13, 8, 8);
+  const eyeGeo = new THREE.SphereGeometry(size * 0.17, 8, 8);
   for (const sx of [-1, 1]) {
     const eye = new THREE.Mesh(eyeGeo, dark);
     eye.position.set(sx * size * 0.38, size * 0.08, size * 0.82);
@@ -161,9 +161,11 @@ function weaponModel(wp) {
     // disque de flou de rotation
     const blur = new THREE.Mesh(
       new THREE.CircleGeometry(r * 1.28, 24),
-      new THREE.MeshBasicMaterial({ color: 0xd8dce8, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide })
     );
     blur.userData.noShadow = true;
+    blur.name = 'spinblur';
+    blur.visible = false; // seulement quand ça tourne (combat)
     g.add(blur);
     g.add(disc);
     anim.spin.push(disc);
@@ -237,11 +239,13 @@ function weaponModel(wp) {
     // disque de flou des canons
     const blur = new THREE.Mesh(
       new THREE.CircleGeometry(0.1, 16),
-      new THREE.MeshBasicMaterial({ color: 0xd8dce8, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide })
     );
     blur.rotation.y = Math.PI / 2;
     blur.position.x = w * 0.66;
     blur.userData.noShadow = true;
+    blur.name = 'spinblur';
+    blur.visible = false;
     g.add(blur);
     anim.spin.push(barrels); anim.axis = 'x';
   }
@@ -689,32 +693,6 @@ export function skyTexture(theme = ARENA_THEMES[0]) {
   x.fillStyle = theme.sky[0]; x.fillRect(0, 0, 512, 100);
   x.fillStyle = theme.sky[1]; x.fillRect(0, 100, 512, 80);
   x.fillStyle = theme.sky[2]; x.fillRect(0, 180, 512, 76);
-  const ink = '#26183A';
-  const cloud = (cx, cy, s) => {
-    x.strokeStyle = ink; x.lineWidth = 5; x.fillStyle = '#ffffff';
-    x.beginPath();
-    x.arc(cx - s * 0.8, cy, s * 0.55, Math.PI * 0.5, Math.PI * 1.5);
-    x.arc(cx - s * 0.25, cy - s * 0.45, s * 0.6, Math.PI * 0.9, Math.PI * 1.95);
-    x.arc(cx + s * 0.45, cy - s * 0.3, s * 0.55, Math.PI * 1.2, Math.PI * 2.1);
-    x.arc(cx + s * 0.85, cy, s * 0.5, Math.PI * 1.5, Math.PI * 0.5);
-    x.closePath();
-    x.fill(); x.stroke();
-    x.fillStyle = '#CFE9F5';
-    x.fillRect(cx - s * 1.1, cy + s * 0.28, s * 2.1, s * 0.2);
-  };
-  if (theme.sun) {
-    // soleil à rayons courts, contour encre
-    const sx = 400, sy = 62, sr = 26;
-    x.strokeStyle = ink; x.lineWidth = 5; x.fillStyle = '#FFD84D';
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2;
-      x.beginPath();
-      x.moveTo(sx + Math.cos(a) * (sr + 6), sy + Math.sin(a) * (sr + 6));
-      x.lineTo(sx + Math.cos(a) * (sr + 17), sy + Math.sin(a) * (sr + 17));
-      x.stroke();
-    }
-    x.beginPath(); x.arc(sx, sy, sr, 0, Math.PI * 2); x.fill(); x.stroke();
-  }
   if (theme.stars) {
     // étoiles à 4 branches dessinées
     x.fillStyle = '#ffffff';
@@ -726,14 +704,72 @@ export function skyTexture(theme = ARENA_THEMES[0]) {
       x.quadraticCurveTo(px, py, px, py - s);
       x.fill();
     }
-  } else {
-    cloud(120, 70, 30);
-    cloud(310, 42, 22);
-    cloud(470, 110, 18);
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+// ---------- décor du ciel en vrais plans 3D (nets sur tous les formats d'écran) ----------
+let CLOUD_TEX = null, SUN_TEX = null;
+function cloudTexture() {
+  if (CLOUD_TEX) return CLOUD_TEX;
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 160;
+  const x = c.getContext('2d');
+  x.strokeStyle = '#26183A'; x.lineWidth = 7; x.fillStyle = '#ffffff';
+  x.beginPath();
+  x.arc(70, 100, 38, Math.PI * 0.5, Math.PI * 1.5);
+  x.arc(105, 70, 42, Math.PI * 0.95, Math.PI * 1.9);
+  x.arc(160, 62, 40, Math.PI * 1.15, Math.PI * 2.05);
+  x.arc(195, 100, 34, Math.PI * 1.5, Math.PI * 0.5);
+  x.closePath();
+  x.fill(); x.stroke();
+  x.fillStyle = '#CFE9F5';
+  x.fillRect(48, 118, 168, 14);
+  CLOUD_TEX = new THREE.CanvasTexture(c);
+  CLOUD_TEX.colorSpace = THREE.SRGBColorSpace;
+  CLOUD_TEX.userData.shared = true;
+  return CLOUD_TEX;
+}
+function sunTexture() {
+  if (SUN_TEX) return SUN_TEX;
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const x = c.getContext('2d');
+  x.translate(128, 128);
+  x.strokeStyle = '#26183A'; x.lineWidth = 8; x.fillStyle = '#FFD84D';
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    x.beginPath();
+    x.moveTo(Math.cos(a) * 78, Math.sin(a) * 78);
+    x.lineTo(Math.cos(a) * 112, Math.sin(a) * 112);
+    x.stroke();
+  }
+  x.beginPath(); x.arc(0, 0, 66, 0, Math.PI * 2); x.fill(); x.stroke();
+  SUN_TEX = new THREE.CanvasTexture(c);
+  SUN_TEX.colorSpace = THREE.SRGBColorSpace;
+  SUN_TEX.userData.shared = true;
+  return SUN_TEX;
+}
+// Ajoute soleil + nuages à une scène (loin, insensibles au brouillard).
+export function addSkyDecor(scene, theme = ARENA_THEMES[0], { sunPos = [14, 16, -42] } = {}) {
+  const mk = (tex, w, h) => new THREE.Mesh(
+    new THREE.PlaneGeometry(w, h),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, fog: false, depthWrite: false })
+  );
+  if (theme.sun) {
+    const sun = mk(sunTexture(), 9, 9);
+    sun.position.set(...sunPos);
+    scene.add(sun);
+  }
+  if (!theme.stars) {
+    for (const [cx, cy, cz, s] of [[-16, 13, -44, 8], [6, 16, -46, 6], [22, 11, -43, 5]]) {
+      const cl = mk(cloudTexture(), s, s * 0.62);
+      cl.position.set(cx, cy, cz);
+      scene.add(cl);
+    }
+  }
 }
 
 export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {

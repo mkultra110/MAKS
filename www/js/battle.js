@@ -4,7 +4,7 @@ import { buildCarSpec } from './car.js';
 import { copilotMods, activeSets } from './state.js';
 import { COPILOTS, WHEELS, partMult } from './data.js';
 import { createRenderer, disposeModel, makeBlobShadow, INK } from './render3d.js';
-import { createCarModel, createArena, createDeathWall, skyTexture, pulseLaserLens, toonMat, ARENA_THEMES, S } from './models3d.js';
+import { createCarModel, createArena, createDeathWall, skyTexture, addSkyDecor, pulseLaserLens, toonMat, ARENA_THEMES, S } from './models3d.js';
 import {
   sfxHit, sfxBoom, sfxLaser, sfxShot, sfxCount, sfxGo, sfxSiren, sfxClang,
   startBattleAudio, stopBattleAudio, setEngineSpeed, crowdExcite,
@@ -149,32 +149,44 @@ function buildScene(battle, themeIndex = 0) {
   scene.add(sun);
 
   battle.env = createArena(scene, ARENA_W, theme);
+  addSkyDecor(scene, theme); // soleil + nuages en plans 3D nets
 
   // meshes du terrain (alignés sur les corps statiques Matter)
-  const terrainMat = toonMat(theme.track);
+  // terrain : version « jouet » — collines en herbe foncée, rampes claires, contour d'encre
+  const hillColor = new THREE.Color(theme.ground).multiplyScalar(0.78).getHex();
+  const rampColor = new THREE.Color(theme.track).lerp(new THREE.Color(0xffffff), 0.25).getHex();
+  const inkMat = new THREE.MeshBasicMaterial({ color: INK, side: THREE.BackSide });
   const edgeMat = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
+  const addWithOutline = (mesh, geoBig) => {
+    scene.add(mesh);
+    const shell = new THREE.Mesh(geoBig, inkMat);
+    shell.position.copy(mesh.position);
+    shell.rotation.copy(mesh.rotation);
+    scene.add(shell);
+  };
   for (const t of battle.terrain) {
     if (t.type === 'bump') {
-      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(t.r * S, t.r * S, 6, 36), terrainMat);
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(t.r * S, t.r * S, 6, 36), toonMat(hillColor));
       cyl.rotation.x = Math.PI / 2;
       cyl.position.set(to3x(t.x), to3y(GROUND_Y + t.r - t.drop), 0);
-      cyl.receiveShadow = true;
-      scene.add(cyl);
+      addWithOutline(cyl, new THREE.CylinderGeometry(t.r * S + 0.07, t.r * S + 0.07, 6.06, 36));
     } else if (t.type === 'plateau') {
-      const box = new THREE.Mesh(new THREE.BoxGeometry(t.w * S, t.h * S + 0.3, 6), terrainMat);
+      const box = new THREE.Mesh(new THREE.BoxGeometry(t.w * S, t.h * S + 0.3, 6), toonMat(rampColor));
       box.position.set(to3x(t.x), to3y(GROUND_Y - t.h / 2) - 0.1, 0);
-      box.receiveShadow = true;
-      scene.add(box);
-      const edge = new THREE.Mesh(new THREE.BoxGeometry(t.w * S, 0.06, 6.02), edgeMat);
+      addWithOutline(box, new THREE.BoxGeometry(t.w * S + 0.12, t.h * S + 0.42, 6.06));
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(t.w * S, 0.07, 6.1), edgeMat);
       edge.position.set(to3x(t.x), to3y(GROUND_Y - t.h) + 0.03, 0);
       scene.add(edge);
     } else { // ramp
       const lift = Math.abs(Math.sin(t.angle)) * t.w * 0.25;
-      const box = new THREE.Mesh(new THREE.BoxGeometry(t.w * S, t.h * S + 0.24, 6), terrainMat);
+      const box = new THREE.Mesh(new THREE.BoxGeometry(t.w * S, t.h * S + 0.24, 6), toonMat(rampColor));
       box.position.set(to3x(t.x), to3y(GROUND_Y - t.h / 2 - lift) - 0.08, 0);
       box.rotation.z = -t.angle;
-      box.receiveShadow = true;
-      scene.add(box);
+      addWithOutline(box, new THREE.BoxGeometry(t.w * S + 0.12, t.h * S + 0.36, 6.06));
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(t.w * S, 0.07, 6.1), edgeMat);
+      edge.position.set(to3x(t.x), to3y(GROUND_Y - t.h / 2 - lift) - 0.08 + (t.h * S + 0.24) / 2, 0);
+      edge.rotation.z = -t.angle;
+      scene.add(edge);
     }
   }
 
@@ -190,6 +202,8 @@ function buildScene(battle, themeIndex = 0) {
     for (const wm of car.model.wheelMeshes) scene.add(wm);
     car.blob = model.userData.blob;
     scene.add(car.blob);
+    // en combat, les armes tournent : leurs disques de flou deviennent visibles
+    car.yaw.traverse(o => { if (o.name === 'spinblur') o.visible = true; });
   }
 
   // murs de la mort

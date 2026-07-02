@@ -526,16 +526,10 @@ body {
 #screen-result { justify-content: center; align-items: center; overflow: hidden; }
 #sunburst {
   position: absolute; inset: -40%;
-  background: conic-gradient(
-    var(--paper) 0 15deg, var(--sun) 15deg 30deg, var(--paper) 30deg 45deg, var(--sun) 45deg 60deg,
-    var(--paper) 60deg 75deg, var(--sun) 75deg 90deg, var(--paper) 90deg 105deg, var(--sun) 105deg 120deg,
-    var(--paper) 120deg 135deg, var(--sun) 135deg 150deg, var(--paper) 150deg 165deg, var(--sun) 165deg 180deg,
-    var(--paper) 180deg 195deg, var(--sun) 195deg 210deg, var(--paper) 210deg 225deg, var(--sun) 225deg 240deg,
-    var(--paper) 240deg 255deg, var(--sun) 255deg 270deg, var(--paper) 270deg 285deg, var(--sun) 285deg 300deg,
-    var(--paper) 300deg 315deg, var(--sun) 315deg 330deg, var(--paper) 330deg 345deg, var(--sun) 345deg 360deg
-  );
-  opacity: .5;
+  background: repeating-conic-gradient(rgba(255, 246, 224, .9) 0 15deg, transparent 15deg 30deg);
+  opacity: .85;
   animation: sunspin 24s linear infinite;
+  pointer-events: none;
 }
 @keyframes sunspin { to { transform: rotate(360deg); } }
 #confetti-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }

@@ -3,7 +3,7 @@
 // couleurs plates exactes (NoToneMapping), ombres en blobs.
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from './lib/BufferGeometryUtils.js';
-import { skyTexture } from './models3d.js';
+import { skyTexture, addSkyDecor } from './models3d.js';
 
 export const INK = 0x26183a; // l'encre signature (jamais du noir pur)
 
@@ -149,6 +149,7 @@ export function studioLights(scene) {
 export function createStudioScene(renderer = null) {
   const scene = new THREE.Scene();
   scene.background = skyTexture();
+  addSkyDecor(scene, undefined, { sunPos: [9, 11, -30] });
   studioLights(scene);
 
   const podium = new THREE.Mesh(
