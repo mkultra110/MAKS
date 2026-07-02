@@ -1,12 +1,77 @@
-// Écran garage : aperçu du véhicule, emplacements, inventaire, fiche pièce.
+// Écran garage : aperçu 3D du véhicule, emplacements, inventaire, fiche pièce.
+import * as THREE from 'three';
 import { KIND_LABEL, partDef, partStats, maxLevel, upgradeCost, recycleValue } from './data.js';
-import { state, save, getPart, isEquipped, buildLoadout, computeCarStats, equip, unequip, removePart, WINS_PER_STAGE } from './state.js';
-import { buildCarSpec, drawCarStatic, drawPartThumb } from './car.js';
+import { state, save, isEquipped, buildLoadout, computeCarStats, equip, unequip, removePart, WINS_PER_STAGE } from './state.js';
+import { buildCarSpec } from './car.js';
+import { createRenderer, createStudioScene } from './render3d.js';
+import { createCarModel, poseCarStatic } from './models3d.js';
+import { partThumb } from './thumbs.js';
 import { sfxClick } from './sfx.js';
 
 let currentTab = 'body';
 let sheetPart = null;
 
+// ---- aperçu 3D (plateau tournant) ----
+let pv = null; // { renderer, scene, camera, holder, raf, running }
+
+function ensurePreview() {
+  if (pv) return;
+  const canvas = document.getElementById('preview-canvas');
+  const renderer = createRenderer(canvas);
+  const scene = createStudioScene();
+  const camera = new THREE.PerspectiveCamera(34, 2, 0.1, 100);
+  const holder = new THREE.Group();
+  scene.add(holder);
+  pv = { renderer, scene, camera, holder, raf: 0, running: false, angle: -0.55 };
+}
+
+function previewLoop(now) {
+  if (!pv.running) return;
+  pv.raf = requestAnimationFrame(previewLoop);
+  const canvas = pv.renderer.domElement;
+  if (canvas.clientWidth && (canvas.width !== Math.floor(canvas.clientWidth * pv.renderer.getPixelRatio()))) {
+    pv.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+    pv.camera.aspect = canvas.clientWidth / canvas.clientHeight;
+    pv.camera.updateProjectionMatrix();
+  }
+  pv.holder.rotation.y = pv.angle + now / 4200;
+  // cadrage : tient dans le champ vertical ET horizontal
+  const fit = pv.fit || 3.4;
+  const vFov = pv.camera.fov * Math.PI / 180;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * pv.camera.aspect);
+  const dist = Math.max(
+    (fit * 0.62) / Math.tan(vFov / 2),
+    (fit * 0.56) / Math.tan(hFov / 2)
+  );
+  pv.camera.position.set(dist * 0.18, fit * 0.34, dist);
+  pv.camera.lookAt(0, fit * 0.2, 0);
+  pv.renderer.render(pv.scene, pv.camera);
+}
+
+export function startPreview() {
+  ensurePreview();
+  if (pv.running) return;
+  pv.running = true;
+  pv.raf = requestAnimationFrame(previewLoop);
+}
+export function stopPreview() {
+  if (!pv) return;
+  pv.running = false;
+  cancelAnimationFrame(pv.raf);
+}
+
+function refreshPreviewModel(lo) {
+  ensurePreview();
+  pv.holder.clear();
+  if (!lo.body) return;
+  const spec = buildCarSpec(lo);
+  const model = createCarModel(spec);
+  poseCarStatic(model, 1);
+  pv.holder.add(model);
+  pv.fit = Math.max(spec.body.w * 0.02 * 1.6, 3.0);
+}
+
+// ---- interactions ----
 export function initGarage() {
   document.querySelectorAll('.inv-tabs .tab').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -52,7 +117,7 @@ export function initGarage() {
 export function renderGarage() {
   document.getElementById('coins').textContent = state.coins;
   document.getElementById('stage-label').textContent =
-    `Étape ${state.stage} — victoire ${state.stageWins + 1}/${WINS_PER_STAGE}`;
+    `Étape ${state.stage} · ${state.stageWins}/${WINS_PER_STAGE}`;
   document.getElementById('stage-fill').style.width = (state.stageWins / WINS_PER_STAGE * 100) + '%';
 
   const lo = buildLoadout();
@@ -60,38 +125,21 @@ export function renderGarage() {
   document.getElementById('stat-hp').textContent = stats.hp;
   document.getElementById('stat-atk').textContent = stats.atk;
   document.getElementById('stat-energy').textContent = `${stats.used}/${stats.capacity}`;
+  const fill = document.getElementById('energy-fill');
+  fill.style.width = Math.min(100, stats.used / Math.max(1, stats.capacity) * 100) + '%';
   const over = stats.used > stats.capacity;
+  fill.classList.toggle('over', over);
   document.getElementById('energy-warning').classList.toggle('hidden', !over);
   document.getElementById('btn-fight').disabled = over || !lo.body || lo.weapons.length === 0;
   document.getElementById('btn-quick').disabled = over || !lo.body || lo.weapons.length === 0;
 
-  renderPreview(lo);
-  renderSlots(lo, stats);
+  refreshPreviewModel(lo);
+  startPreview();
+  renderSlots(lo);
   renderInventory();
 }
 
-function renderPreview(lo) {
-  const canvas = document.getElementById('preview-canvas');
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = canvas.clientWidth * dpr;
-  canvas.height = canvas.clientHeight * dpr;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  // sol
-  ctx.fillStyle = 'rgba(0,0,20,.35)';
-  ctx.fillRect(0, canvas.height * 0.82, canvas.width, canvas.height * 0.18);
-  if (lo.body) {
-    const spec = buildCarSpec(lo);
-    drawCarStatic(ctx, spec, canvas.width / 2, canvas.height * 0.82, Math.min(canvas.width / 420, canvas.height / 260) * 1.15);
-  } else {
-    ctx.fillStyle = '#9a9ac4';
-    ctx.font = `700 ${14 * dpr}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText('Équipe un corps !', canvas.width / 2, canvas.height / 2);
-  }
-}
-
-function renderSlots(lo, stats) {
+function renderSlots(lo) {
   const row = document.getElementById('slots-row');
   row.innerHTML = '';
   const bDef = lo.body ? partDef(lo.body) : null;
@@ -109,13 +157,12 @@ function renderSlots(lo, stats) {
     const el = document.createElement('div');
     el.className = 'slot' + (d.part ? ' filled' : '');
     if (d.part) {
-      const cv = document.createElement('canvas');
-      cv.width = 104; cv.height = 80;
-      el.appendChild(cv);
-      drawPartThumb(cv, d.part);
+      const img = document.createElement('img');
+      img.src = partThumb(d.part);
+      el.appendChild(img);
       el.addEventListener('click', () => { sfxClick(); openSheet(d.part); });
     } else {
-      el.textContent = '+';
+      el.appendChild(document.createTextNode('+'));
     }
     const tag = document.createElement('div');
     tag.className = 'slot-tag';
@@ -140,10 +187,9 @@ function renderInventory() {
   for (const p of parts) {
     const el = document.createElement('div');
     el.className = 'inv-item' + (isEquipped(p.id) ? ' equipped' : '');
-    const cv = document.createElement('canvas');
-    cv.width = 120; cv.height = 72;
-    el.appendChild(cv);
-    drawPartThumb(cv, p);
+    const img = document.createElement('img');
+    img.src = partThumb(p);
+    el.appendChild(img);
     const nm = document.createElement('div');
     nm.className = 'nm';
     nm.textContent = partDef(p).name;
@@ -164,17 +210,18 @@ function renderInventory() {
 function openSheet(part) {
   sheetPart = part;
   document.getElementById('part-sheet').classList.remove('hidden');
-  drawPartThumb(document.getElementById('part-canvas'), part);
-  document.getElementById('part-name').textContent = `${partDef(part).name} (${KIND_LABEL[part.kind]})`;
+  document.getElementById('part-img').src = partThumb(part);
+  document.getElementById('part-name').textContent = `${partDef(part).name}`;
   document.getElementById('part-stars').textContent = '★'.repeat(part.stars) + '☆'.repeat(5 - part.stars);
-  document.getElementById('part-level').textContent = `Niveau ${part.level} / ${maxLevel(part)}`;
+  document.getElementById('part-level').textContent = `${KIND_LABEL[part.kind]} · Niveau ${part.level}/${maxLevel(part)}`;
   const list = document.getElementById('part-statlist');
   list.innerHTML = '';
   for (const [k, v] of partStats(part)) {
     const el = document.createElement('div');
     el.className = 'ps';
-    el.innerHTML = `<small></small>`;
-    el.querySelector('small').textContent = k;
+    const small = document.createElement('small');
+    small.textContent = k;
+    el.appendChild(small);
     el.appendChild(document.createTextNode(String(v)));
     list.appendChild(el);
   }
@@ -189,11 +236,11 @@ function openSheet(part) {
     btnUp.disabled = true;
   } else {
     const cost = upgradeCost(part);
-    btnUp.textContent = `Améliorer 🪙${cost}`;
+    btnUp.textContent = `Améliorer · ${cost}`;
     btnUp.disabled = state.coins < cost;
   }
   const btnRec = document.getElementById('btn-recycle');
-  btnRec.textContent = `Recycler +🪙${recycleValue(part)}`;
+  btnRec.textContent = `Recycler · +${recycleValue(part)}`;
   btnRec.disabled = equipped;
 }
 

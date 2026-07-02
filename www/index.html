@@ -7,67 +7,139 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="MAKS">
-<meta name="theme-color" content="#12122a">
+<meta name="theme-color" content="#0d0d22">
 <title>MAKS — Mega Arena Kombat Stars</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="css/style.css">
+<script type="importmap">{ "imports": { "three": "./js/lib/three.module.min.js" } }</script>
 </head>
 <body>
+
+<!-- Sprite d'icônes SVG -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-coin" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" fill="#ffc93e"/>
+      <circle cx="12" cy="12" r="10" fill="none" stroke="#c8860a" stroke-width="1.6"/>
+      <circle cx="12" cy="12" r="6.4" fill="none" stroke="#c8860a" stroke-width="1.4"/>
+      <path d="M12 8.2l1.1 2.2 2.4.35-1.75 1.7.4 2.4L12 13.7l-2.15 1.15.4-2.4-1.75-1.7 2.4-.35z" fill="#c8860a"/>
+    </symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24">
+      <path d="M12 21s-8.2-5.4-10-10C.7 7.6 2.8 4 6.4 4 8.8 4 10.9 5.6 12 7.4 13.1 5.6 15.2 4 17.6 4 21.2 4 23.3 7.6 22 11c-1.8 4.6-10 10-10 10z" fill="#ff5d7a"/>
+    </symbol>
+    <symbol id="i-sword" viewBox="0 0 24 24">
+      <path d="M3 21l3.2-.8L19.6 6.8 21 3l-3.8 1.4L3.8 17.8z" fill="#d9dff2"/>
+      <path d="M6.5 14.5l3 3" stroke="#8a92b0" stroke-width="1.6"/>
+      <rect x="3.4" y="17.2" width="4.6" height="3" rx="1" transform="rotate(45 5.7 18.7)" fill="#b9822a"/>
+    </symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24">
+      <path d="M13.5 2L5 13.5h5L9.5 22 19 9.5h-5.5z" fill="#ffd23e"/>
+    </symbol>
+    <symbol id="i-wheel" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" fill="#39405c"/>
+      <circle cx="12" cy="12" r="5.6" fill="#aeb6d4"/>
+      <circle cx="12" cy="12" r="1.8" fill="#39405c"/>
+      <g stroke="#39405c" stroke-width="1.8"><path d="M12 6.5v11M6.5 12h11M8.2 8.2l7.6 7.6M15.8 8.2l-7.6 7.6"/></g>
+    </symbol>
+    <symbol id="i-car" viewBox="0 0 24 24">
+      <path d="M3 13.5c0-1.4 1-2.5 2.4-2.7l1.8-2.9C7.8 6.8 9 6 10.3 6h4.2c1.3 0 2.5.8 3.1 1.9l1.6 2.9c1.5.2 2.8 1.3 2.8 2.7v2.2c0 .7-.6 1.3-1.3 1.3h-1a2.9 2.9 0 01-5.6 0H9.9a2.9 2.9 0 01-5.6 0h-.9c-.8 0-1.4-.6-1.4-1.3z" fill="#5aa7ff"/>
+      <circle cx="7.1" cy="17" r="1.9" fill="#242a44"/><circle cx="16.9" cy="17" r="1.9" fill="#242a44"/>
+      <path d="M9 8h5.4c.6 0 1.2.4 1.5 1l.9 1.7H7.6l1-1.8C8.8 8.3 8.9 8 9 8z" fill="#cfe6ff"/>
+    </symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24">
+      <path d="M21.5 6.7a5.4 5.4 0 01-7.4 6.6L7 20.4a2.2 2.2 0 01-3.2-3.2l7.1-7.1a5.4 5.4 0 016.6-7.4L14 6.2l.6 3.2 3.2.6z" fill="#9aa3c4"/>
+    </symbol>
+    <symbol id="i-star" viewBox="0 0 24 24">
+      <path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z" fill="#ffc93e"/>
+    </symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24">
+      <path d="M6 3h12v2h3v3c0 2.6-2 4.7-4.6 5-1 1.8-2.4 3-4.4 3s-3.4-1.2-4.4-3C5 12.7 3 10.6 3 8V5h3zM5 7v1c0 1.4 1 2.6 2.3 2.9A9 9 0 017 7zm14 0h-2a9 9 0 01-.3 3.9C18 10.6 19 9.4 19 8z" fill="#ffc93e"/>
+      <path d="M10 16h4v2.4l2.5 1.4V21h-9v-1.2L10 18.4z" fill="#e29a1d"/>
+    </symbol>
+    <symbol id="i-dice" viewBox="0 0 24 24">
+      <rect x="3" y="3" width="18" height="18" rx="4" fill="#d9dff2"/>
+      <circle cx="8.5" cy="8.5" r="1.7" fill="#39405c"/><circle cx="15.5" cy="8.5" r="1.7" fill="#39405c"/>
+      <circle cx="12" cy="12" r="1.7" fill="#39405c"/>
+      <circle cx="8.5" cy="15.5" r="1.7" fill="#39405c"/><circle cx="15.5" cy="15.5" r="1.7" fill="#39405c"/>
+    </symbol>
+    <symbol id="i-back" viewBox="0 0 24 24">
+      <path d="M14.5 5.5L8 12l6.5 6.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-recycle" viewBox="0 0 24 24">
+      <path d="M7 9l2.5-4.3c.7-1.1 2.3-1.1 3 0L14 7.2l2-1.2 1 5-5-.4 1.9-1.1-1.4-2.4L10 11zM4.8 12.6l4.4.3-2 1.2 1.4 2.4h3.4l.1 3.5H8.3c-1.3 0-2.5-.7-3.1-1.8l-1.5-2.6-2 1.1zM19.2 12.4l-2.3 4.1 1.5 2.7c.6 1.1-.2 2.6-1.5 2.6l.2-3.4-3.4.1-.1-3.6 3.5.1-1.1-2z" fill="#7fe08f"/>
+    </symbol>
+  </defs>
+</svg>
+
 <div id="app">
 
+  <!-- ÉCRAN D'ACCUEIL -->
+  <section id="screen-splash" class="screen">
+    <canvas id="splash-canvas"></canvas>
+    <div class="splash-overlay">
+      <div class="logo">
+        <div class="logo-word">MAKS</div>
+        <div class="logo-sub">MEGA&nbsp;ARENA&nbsp;KOMBAT&nbsp;STARS</div>
+      </div>
+      <button id="btn-play" class="btn xl primary">JOUER</button>
+      <div class="splash-hint">Construis. Combats. Domine l'arène.</div>
+    </div>
+  </section>
+
   <!-- ÉCRAN GARAGE -->
-  <section id="screen-garage" class="screen">
+  <section id="screen-garage" class="screen hidden">
     <header class="topbar">
       <div class="brand">MAKS</div>
-      <div class="wallet">
-        <span class="coin-icon">🪙</span><span id="coins">0</span>
-      </div>
+      <div class="chip stage-chip"><svg class="ic"><use href="#i-trophy"/></svg><span id="stage-label">Étape 1</span></div>
+      <div class="chip wallet"><svg class="ic"><use href="#i-coin"/></svg><span id="coins">0</span></div>
     </header>
 
-    <div class="stage-banner">
-      <div id="stage-label">Étape 1</div>
-      <div class="stage-progress"><div id="stage-fill"></div></div>
-    </div>
+    <div class="stage-progress"><div id="stage-fill"></div></div>
 
     <div class="preview-wrap">
       <canvas id="preview-canvas"></canvas>
       <div class="car-stats">
-        <div class="stat hp">❤️ <span id="stat-hp">0</span></div>
-        <div class="stat atk">⚔️ <span id="stat-atk">0</span></div>
-        <div class="stat nrg">⚡ <span id="stat-energy">0/0</span></div>
+        <div class="stat"><svg class="ic"><use href="#i-heart"/></svg><span id="stat-hp">0</span></div>
+        <div class="stat"><svg class="ic"><use href="#i-sword"/></svg><span id="stat-atk">0</span></div>
       </div>
-      <div id="energy-warning" class="energy-warning hidden">⚡ Énergie dépassée !</div>
+      <div class="energy-pill" id="energy-pill">
+        <svg class="ic"><use href="#i-bolt"/></svg>
+        <div class="energy-track"><div id="energy-fill"></div></div>
+        <span id="stat-energy">0/0</span>
+      </div>
+      <div id="energy-warning" class="energy-warning hidden">Énergie dépassée !</div>
     </div>
 
     <div class="slots-row" id="slots-row"></div>
 
     <nav class="inv-tabs">
-      <button class="tab active" data-tab="body">🚗</button>
-      <button class="tab" data-tab="wheel">🛞</button>
-      <button class="tab" data-tab="weapon">⚔️</button>
-      <button class="tab" data-tab="gadget">🔧</button>
+      <button class="tab active" data-tab="body"><svg class="ic"><use href="#i-car"/></svg></button>
+      <button class="tab" data-tab="wheel"><svg class="ic"><use href="#i-wheel"/></svg></button>
+      <button class="tab" data-tab="weapon"><svg class="ic"><use href="#i-sword"/></svg></button>
+      <button class="tab" data-tab="gadget"><svg class="ic"><use href="#i-wrench"/></svg></button>
     </nav>
     <div id="inventory" class="inventory"></div>
 
     <footer class="actions">
-      <button id="btn-quick" class="btn secondary">🎲 Combat rapide</button>
-      <button id="btn-fight" class="btn primary">⚔️ CHAMPIONNAT</button>
+      <button id="btn-quick" class="btn secondary"><svg class="ic"><use href="#i-dice"/></svg> Combat rapide</button>
+      <button id="btn-fight" class="btn primary"><svg class="ic"><use href="#i-sword"/></svg> CHAMPIONNAT</button>
     </footer>
   </section>
 
   <!-- FICHE PIÈCE -->
   <div id="part-sheet" class="sheet hidden">
     <div class="sheet-card">
+      <div class="grabber"></div>
       <div class="sheet-head">
-        <canvas id="part-canvas" width="120" height="90"></canvas>
+        <div class="part-thumb-lg"><img id="part-img" alt=""></div>
         <div>
           <div id="part-name" class="part-name"></div>
           <div id="part-stars" class="part-stars"></div>
           <div id="part-level" class="part-level"></div>
         </div>
-        <button id="sheet-close" class="close">✕</button>
+        <button id="sheet-close" class="close"><svg class="ic"><use href="#i-back"/></svg></button>
       </div>
       <div id="part-statlist" class="part-statlist"></div>
       <div class="sheet-actions">
@@ -81,24 +153,39 @@
   <!-- ÉCRAN VS -->
   <section id="screen-vs" class="screen hidden">
     <div class="vs-wrap">
-      <div class="vs-card mine"><canvas id="vs-me" width="300" height="170"></canvas><div id="vs-me-name" class="vs-name"></div></div>
+      <div class="vs-card mine">
+        <img id="vs-me" alt="">
+        <div id="vs-me-name" class="vs-name"></div>
+        <div id="vs-me-stats" class="vs-stats"></div>
+      </div>
       <div class="vs-badge">VS</div>
-      <div class="vs-card theirs"><canvas id="vs-them" width="300" height="170"></canvas><div id="vs-them-name" class="vs-name"></div></div>
+      <div class="vs-card theirs">
+        <img id="vs-them" alt="">
+        <div id="vs-them-name" class="vs-name"></div>
+        <div id="vs-them-stats" class="vs-stats"></div>
+      </div>
     </div>
     <div class="vs-buttons">
-      <button id="btn-vs-back" class="btn secondary">← Retour</button>
-      <button id="btn-vs-go" class="btn primary">GO !</button>
+      <button id="btn-vs-back" class="btn secondary"><svg class="ic"><use href="#i-back"/></svg> Retour</button>
+      <button id="btn-vs-go" class="btn xl primary">GO !</button>
     </div>
   </section>
 
   <!-- ÉCRAN COMBAT -->
   <section id="screen-battle" class="screen hidden">
     <canvas id="battle-canvas"></canvas>
+    <canvas id="battle-overlay"></canvas>
     <div id="battle-hud">
       <div class="hud-row">
-        <div class="fighter left"><div id="hud-name-l" class="hud-name"></div><div class="hpbar"><div id="hp-l" class="hpfill me"></div></div></div>
+        <div class="fighter left">
+          <div id="hud-name-l" class="hud-name"></div>
+          <div class="hpbar"><div id="hp-l" class="hpfill me"></div></div>
+        </div>
         <div id="hud-timer">45</div>
-        <div class="fighter right"><div id="hud-name-r" class="hud-name"></div><div class="hpbar"><div id="hp-r" class="hpfill foe"></div></div></div>
+        <div class="fighter right">
+          <div id="hud-name-r" class="hud-name"></div>
+          <div class="hpbar"><div id="hp-r" class="hpfill foe"></div></div>
+        </div>
       </div>
     </div>
     <div id="battle-msg" class="battle-msg hidden"></div>
@@ -106,16 +193,18 @@
 
   <!-- ÉCRAN RÉSULTAT -->
   <section id="screen-result" class="screen hidden">
+    <canvas id="confetti-canvas"></canvas>
     <div class="result-card">
       <div id="result-title" class="result-title"></div>
       <div id="result-sub" class="result-sub"></div>
-      <div id="result-rewards" class="result-rewards"></div>
+      <div id="result-rewards" class="result-rewards"><svg class="ic big"><use href="#i-coin"/></svg><span id="reward-coins">0</span></div>
       <div id="reward-part" class="reward-part hidden">
         <div class="reward-part-glow"></div>
-        <canvas id="reward-canvas" width="160" height="120"></canvas>
+        <div class="reward-tag">NOUVELLE PIÈCE</div>
+        <img id="reward-img" alt="">
         <div id="reward-name"></div>
       </div>
-      <button id="btn-result-ok" class="btn primary">Continuer</button>
+      <button id="btn-result-ok" class="btn xl primary">Continuer</button>
     </div>
   </section>
 

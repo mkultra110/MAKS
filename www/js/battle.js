@@ -1,5 +1,8 @@
-// Moteur de combat : physique Matter.js + rendu canvas + IA automatique.
-import { buildCarSpec, drawBodyLocal, drawWheel } from './car.js';
+// Moteur de combat : physique Matter.js + rendu 3D Three.js + IA automatique.
+import * as THREE from 'three';
+import { buildCarSpec } from './car.js';
+import { createRenderer } from './render3d.js';
+import { createCarModel, createArena, createDeathWall, skyTexture, S } from './models3d.js';
 import { sfxHit, sfxBoom, sfxLaser, sfxShot } from './sfx.js';
 
 const { Engine, Bodies, Body, Composite, Constraint, Events, Vector } = Matter;
@@ -7,12 +10,17 @@ const { Engine, Bodies, Body, Composite, Constraint, Events, Vector } = Matter;
 const ARENA_W = 1400;
 const GROUND_Y = 620;
 const BATTLE_TIME = 45;     // secondes avant les murs de la mort
-const MELEE_TICK = 0.25;    // période d'application des dégâts de mêlée
+const MELEE_TICK = 0.25;    // période des dégâts de mêlée
 const FLIP_TIME = 2.5;      // secondes retourné avant KO
 
-let current = null; // combat en cours
+let current = null;
+let renderer = null; // WebGL persistant entre les combats
 
-// ---------- Construction d'un véhicule physique ----------
+// ---------- conversion physique 2D -> monde 3D ----------
+const to3x = x => (x - ARENA_W / 2) * S;
+const to3y = y => (GROUND_Y - y) * S;
+
+// ---------- construction d'un véhicule physique ----------
 function makeCar(engine, lo, opts) {
   const { x, dir, team, name, statBoost = 1 } = opts;
   const spec = buildCarSpec(lo);
@@ -31,7 +39,6 @@ function makeCar(engine, lo, opts) {
     parts, friction: 0.3, restitution: 0.1,
     collisionFilter: { group },
   });
-  // décalage entre centre de masse et centre géométrique du châssis
   const centerOffset = { x: x - chassis.position.x, y: y - chassis.position.y };
 
   const wheels = [], axles = [];
@@ -61,14 +68,15 @@ function makeCar(engine, lo, opts) {
     dmgMult: statBoost,
     weaponTimers: spec.weapons.map(() => 0),
     meleeLast: spec.weapons.map(() => 0),
-    meleeTouch: spec.weapons.map(() => -1),
     boostTimer: 1.2,
     flipTimer: 0,
     dead: false,
+    z: team === 0 ? 0.55 : -0.55,
+    model: null, yaw: null,
   };
 }
 
-// Position monde d'un point local (repère châssis, avant création) du véhicule.
+// Position monde 2D d'un point local (repère châssis avant création).
 function worldPoint(car, lx, ly) {
   const a = car.chassis.angle;
   const px = car.centerOffset.x + lx * car.dir, py = car.centerOffset.y + ly;
@@ -78,38 +86,122 @@ function worldPoint(car, lx, ly) {
   };
 }
 
-// ---------- Combat ----------
+// ---------- scène 3D ----------
+function buildScene(battle) {
+  const scene = new THREE.Scene();
+  scene.background = skyTexture();
+  scene.fog = new THREE.Fog(0x191636, 55, 140);
+
+  const hemi = new THREE.HemisphereLight(0xcfd6ff, 0x241a38, 0.75);
+  scene.add(hemi);
+  const key = new THREE.DirectionalLight(0xfff2dd, 2.2);
+  key.position.set(6, 14, 9);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.camera.left = -16; key.shadow.camera.right = 16;
+  key.shadow.camera.top = 12; key.shadow.camera.bottom = -6;
+  key.shadow.bias = -0.0015;
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0x7a9dff, 0.9);
+  rim.position.set(-8, 6, -9);
+  scene.add(rim);
+
+  createArena(scene, ARENA_W);
+
+  // véhicules
+  for (const car of battle.cars) {
+    const model = createCarModel(car.spec);
+    const yaw = new THREE.Group();
+    yaw.rotation.y = car.dir === 1 ? 0 : Math.PI;
+    yaw.add(model.userData.bodyGroup);
+    scene.add(yaw);
+    car.model = model.userData;
+    car.yaw = yaw;
+    for (const wm of car.model.wheelMeshes) scene.add(wm);
+  }
+
+  // murs de la mort
+  battle.wall3L = createDeathWall(1);
+  battle.wall3R = createDeathWall(-1);
+  scene.add(battle.wall3L, battle.wall3R);
+
+  // lumière de flash des explosions
+  battle.flash = new THREE.PointLight(0xffb060, 0, 30);
+  scene.add(battle.flash);
+
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 120);
+  camera.position.set(0, 2.6, 12);
+  battle.scene = scene;
+  battle.camera = camera;
+  battle.camX = 0; battle.camDist = 12;
+}
+
+// ---------- effets : jets de particules (un burst = un THREE.Points) ----------
+function burst(battle, x2, y2, z, n, color, opt = {}) {
+  const pos = new Float32Array(n * 3);
+  const vel = [];
+  const x3 = to3x(x2), y3 = to3y(y2);
+  for (let i = 0; i < n; i++) {
+    pos[i * 3] = x3; pos[i * 3 + 1] = y3; pos[i * 3 + 2] = z;
+    const a = Math.random() * Math.PI * 2;
+    const sp = (opt.speed || 3.2) * (0.4 + Math.random());
+    vel.push(new THREE.Vector3(Math.cos(a) * sp, Math.abs(Math.sin(a)) * sp * 0.9 + 1.2, (Math.random() - 0.5) * sp * 0.7));
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mtl = new THREE.PointsMaterial({
+    color, size: opt.size || 0.14, transparent: true, opacity: 1,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const points = new THREE.Points(geo, mtl);
+  battle.scene.add(points);
+  battle.bursts.push({ points, vel, life: opt.life || 0.6, maxLife: opt.life || 0.6, grav: opt.grav ?? 7 });
+}
+
+function shockwave(battle, x2, y2, z, color = 0xffb040) {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.28, 0.5, 32),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+  );
+  ring.position.set(to3x(x2), to3y(y2), z + 0.6);
+  battle.scene.add(ring);
+  battle.waves.push({ ring, life: 0.4 });
+}
+
+function flashLight(battle, x2, y2, intensity = 60) {
+  battle.flash.position.set(to3x(x2), to3y(y2) + 0.6, 2.5);
+  battle.flash.intensity = intensity;
+}
+
+// ---------- combat ----------
 export function startBattle(config) {
-  const { playerLoadout, playerName, opponent, onEnd } = config;
+  const { playerLoadout, opponent, onEnd } = config;
   const canvas = document.getElementById('battle-canvas');
-  const ctx = canvas.getContext('2d');
-  const msgEl = document.getElementById('battle-msg');
+  if (!renderer) renderer = createRenderer(canvas);
 
   const engine = Engine.create();
   engine.gravity.y = 1;
 
-  // sol et bords
   const ground = Bodies.rectangle(ARENA_W / 2, GROUND_Y + 40, ARENA_W * 3, 80, { isStatic: true, label: 'ground', friction: 0.9 });
   const wallL = Bodies.rectangle(-30, GROUND_Y - 300, 60, 700, { isStatic: true, label: 'wall:L' });
   const wallR = Bodies.rectangle(ARENA_W + 30, GROUND_Y - 300, 60, 700, { isStatic: true, label: 'wall:R' });
   Composite.add(engine.world, [ground, wallL, wallR]);
 
-  const me = makeCar(engine, playerLoadout, { x: 260, dir: 1, team: 0, name: playerName });
-  const foe = makeCar(engine, opponent.loadout, { x: ARENA_W - 260, dir: -1, team: 1, name: opponent.name, statBoost: opponent.statBoost });
-  const cars = [me, foe];
+  const me = makeCar(engine, playerLoadout, { x: 390, dir: 1, team: 0, name: 'Toi' });
+  const foe = makeCar(engine, opponent.loadout, { x: ARENA_W - 390, dir: -1, team: 1, name: opponent.name, statBoost: opponent.statBoost });
 
   const battle = {
-    engine, canvas, ctx, cars, ground, wallL, wallR,
-    projectiles: [], particles: [], beams: [], floaters: [],
-    time: -3.2,           // compte à rebours
-    wallsDeadly: false,
+    engine, canvas, cars: [me, foe], ground, wallL, wallR,
+    projectiles: [], beams: [], bursts: [], waves: [], floaters: [],
+    time: -3.2, wallsDeadly: false,
     shake: 0, slowmo: 1,
     finished: false, raf: 0, lastMsg: '',
     result: null, endTimer: 0,
+    overlay: document.getElementById('battle-overlay'),
   };
   current = battle;
+  buildScene(battle);
 
-  // ----- dégâts de mêlée & projectiles via événements de collision -----
   Events.on(engine, 'collisionActive', ev => {
     for (const pair of ev.pairs) handleMeleePair(battle, pair);
   });
@@ -129,7 +221,7 @@ export function startBattle(config) {
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
     step(battle, dt, onEnd);
-    render(battle, now / 1000);
+    if (current === battle) render(battle, now / 1000, dt);
   };
   battle.raf = requestAnimationFrame(loop);
   return battle;
@@ -142,6 +234,11 @@ export function stopBattle() {
   Events.off(current.engine);
   Composite.clear(current.engine.world, false);
   Engine.clear(current.engine);
+  // libère la scène 3D
+  current.scene.traverse(o => {
+    if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose?.();
+  });
+  current.scene.clear();
   current = null;
 }
 
@@ -162,13 +259,12 @@ function handleMeleePair(battle, pair) {
     const wIdx = +m[2];
     const wp = owner.spec.weapons[wIdx];
     if (wp.kind !== 'melee') continue;
-    owner.meleeTouch[wIdx] = battle.time;
     if (battle.time - owner.meleeLast[wIdx] >= MELEE_TICK) {
       owner.meleeLast[wIdx] = battle.time;
       const dmg = wp.def.dps * wp.mult * MELEE_TICK * owner.dmgMult;
       const at = pair.collision.supports[0] || target.chassis.position;
       applyDamage(battle, target, dmg, at);
-      sparks(battle, at.x, at.y, 6, '#ffd060');
+      burst(battle, at.x, at.y, target.z, 7, 0xffd060, { speed: 3.6, size: 0.1, life: 0.45 });
       if (wp.def.push) {
         Body.setVelocity(target.chassis, { x: target.chassis.velocity.x + owner.dir * 2.2, y: target.chassis.velocity.y - 0.6 });
       }
@@ -186,8 +282,10 @@ function handleProjectilePair(battle, pair) {
     const pos = proj.body.position;
     if (proj.type === 'rocket') {
       sfxBoom(false);
-      sparks(battle, pos.x, pos.y, 18, '#ff9040');
-      ring(battle, pos.x, pos.y, '#ffb020');
+      burst(battle, pos.x, pos.y, proj.z, 26, 0xff9040, { speed: 5, size: 0.16, life: 0.7 });
+      burst(battle, pos.x, pos.y, proj.z, 12, 0xffd060, { speed: 3, size: 0.12, life: 0.5 });
+      shockwave(battle, pos.x, pos.y, proj.z);
+      flashLight(battle, pos.x, pos.y, 70);
       battle.shake = Math.max(battle.shake, 8);
       for (const car of battle.cars) {
         if (car === proj.owner || car.dead) continue;
@@ -199,7 +297,7 @@ function handleProjectilePair(battle, pair) {
       }
     } else if (target && target !== proj.owner && !target.dead) {
       applyDamage(battle, target, proj.dmg, pos);
-      sparks(battle, pos.x, pos.y, 4, '#ffe080');
+      burst(battle, pos.x, pos.y, proj.z, 4, 0xffe080, { speed: 2.4, size: 0.09, life: 0.35 });
     }
   }
 }
@@ -214,12 +312,12 @@ function handleWallPair(battle, pair) {
 }
 
 function applyDamage(battle, car, dmg, at) {
-  if (car.dead || battle.finished && battle.endTimer > 0.4) return;
+  if (car.dead || (battle.finished && battle.endTimer > 0.4)) return;
   car.hp -= dmg;
   battle.floaters.push({
-    x: at.x + (Math.random() - 0.5) * 20, y: at.y - 20,
-    vy: -60, life: 0.8, text: '-' + Math.max(1, Math.round(dmg)),
-    color: car.team === 0 ? '#ff8090' : '#ffe080',
+    x: at.x + (Math.random() - 0.5) * 20, y: at.y - 30, z: car.z,
+    vy: -90, life: 0.85, text: '-' + Math.max(1, Math.round(dmg)),
+    color: car.team === 0 ? '#ff8fa4' : '#ffe08a',
   });
   if (car.hp <= 0) killCar(battle, car, 'détruit');
 }
@@ -231,10 +329,11 @@ function killCar(battle, car, cause) {
   sfxBoom(true);
   battle.shake = 22;
   const p = car.chassis.position;
-  sparks(battle, p.x, p.y, 40, '#ff8040');
-  sparks(battle, p.x, p.y, 25, '#ffd060');
-  ring(battle, p.x, p.y, '#ff5030');
-  // le véhicule se disloque
+  burst(battle, p.x, p.y, car.z, 46, 0xff8040, { speed: 7, size: 0.2, life: 1.0, grav: 5 });
+  burst(battle, p.x, p.y, car.z, 30, 0xffd060, { speed: 5, size: 0.14, life: 0.8 });
+  burst(battle, p.x, p.y, car.z, 18, 0xffffff, { speed: 3, size: 0.1, life: 0.5 });
+  shockwave(battle, p.x, p.y, car.z, 0xff5030);
+  flashLight(battle, p.x, p.y, 160);
   for (const a of car.axles) Composite.remove(battle.engine.world, a);
   for (const w of car.wheels) Body.setVelocity(w.body, { x: (Math.random() - 0.5) * 14, y: -8 - Math.random() * 5 });
   Body.setVelocity(car.chassis, { x: car.chassis.velocity.x, y: -7 });
@@ -242,7 +341,7 @@ function killCar(battle, car, cause) {
 
   battle.finished = true;
   battle.slowmo = 0.25;
-  battle.endTimer = 1.6;
+  battle.endTimer = 1.7;
   const playerWon = car.team === 1;
   battle.result = {
     win: playerWon,
@@ -263,13 +362,12 @@ function showMsg(battle, text) {
   if (text === '') el.classList.add('hidden');
 }
 
-// ---------- Boucle de simulation ----------
+// ---------- boucle de simulation (identique à la version 2D, physique inchangée) ----------
 function step(battle, dt, onEnd) {
   const { engine, cars } = battle;
   const prev = battle.time;
   battle.time += dt;
 
-  // compte à rebours
   if (battle.time < 0) {
     const n = Math.ceil(-battle.time);
     showMsg(battle, n <= 3 ? String(n) : '');
@@ -278,7 +376,6 @@ function step(battle, dt, onEnd) {
   if (prev < 0) showMsg(battle, 'MIAOU !');
   if (battle.time > 0.9 && battle.lastMsg === 'MIAOU !') showMsg(battle, '');
 
-  // fin de combat : petite scène au ralenti puis résultat
   if (battle.finished) {
     battle.endTimer -= dt;
     if (battle.endTimer <= 0) {
@@ -289,7 +386,6 @@ function step(battle, dt, onEnd) {
     }
   }
 
-  // murs de la mort
   const remaining = BATTLE_TIME - battle.time;
   if (remaining <= 0 && !battle.wallsDeadly) {
     battle.wallsDeadly = true;
@@ -302,14 +398,12 @@ function step(battle, dt, onEnd) {
     Body.setPosition(battle.wallR, { x: battle.wallR.position.x - speed, y: battle.wallR.position.y });
   }
 
-  // conduite + armes + gadgets
   for (const car of cars) {
     if (car.dead || battle.finished) continue;
     const enemy = cars[1 - car.team];
     updateDrive(battle, car, enemy, dt);
     updateWeapons(battle, car, enemy, dt);
     if (car.heal && car.hp > 0) car.hp = Math.min(car.maxHp, car.hp + car.heal * dt);
-    // détection retournement
     if (Math.cos(car.chassis.angle) < -0.25) {
       car.flipTimer += dt;
       if (car.flipTimer > FLIP_TIME) killCar(battle, car, 'retourné');
@@ -325,26 +419,23 @@ function updateDrive(battle, car, enemy, dt) {
   const dx = enemy.chassis.position.x - car.chassis.position.x;
   let dir = Math.sign(dx) || 1;
   const dist = Math.abs(dx);
-  // la rétrofusée maintient la distance (sauf quand les murs arrivent)
   if (car.backpedal && !battle.wallsDeadly && dist < 380) dir = -dir;
   const upright = Math.cos(car.chassis.angle) > 0.1;
   if (!upright) return;
   for (const w of car.wheels) {
     Body.setAngularVelocity(w.body, dir * 0.42 * w.speed);
   }
-  // aide moteur (comme un couple sur le châssis)
   const v = car.chassis.velocity;
   if (Math.abs(v.x) < 7) {
     Body.setVelocity(car.chassis, { x: v.x + dir * 12 * dt, y: v.y });
   }
-  // booster périodique
   if (car.boost) {
     car.boostTimer -= dt;
     if (car.boostTimer <= 0) {
       car.boostTimer = 3.5;
       Body.setVelocity(car.chassis, { x: v.x + Math.sign(dx) * 7, y: v.y - 1.2 });
       const back = worldPoint(car, -car.spec.body.w / 2 - 10, 0);
-      sparks(battle, back.x, back.y, 10, '#ffb020');
+      burst(battle, back.x, back.y, car.z, 12, 0xffb020, { speed: 3, size: 0.13, life: 0.5 });
     }
   }
 }
@@ -361,27 +452,38 @@ function updateWeapons(battle, car, enemy, dt) {
 
     if (wp.kind === 'rocket') {
       car.weaponTimers[i] = wp.def.cooldown;
-      fireProjectile(battle, car, muzzle, target, {
-        type: 'rocket', dmg, speed: 15, arc: -3.2, r: 7, color: '#ff7040',
-      });
+      fireProjectile(battle, car, muzzle, target, { type: 'rocket', dmg, speed: 15, arc: -3.2, r: 7 });
       sfxShot();
     } else if (wp.kind === 'gun') {
       if (dist > wp.def.range) { car.weaponTimers[i] = 0.1; return; }
       car.weaponTimers[i] = wp.def.cooldown;
-      fireProjectile(battle, car, muzzle, { x: target.x, y: target.y - 10 + Math.random() * 20 }, {
-        type: 'bullet', dmg, speed: 22, arc: 0, r: 3, color: '#ffe080',
-      });
+      fireProjectile(battle, car, muzzle, { x: target.x, y: target.y - 10 + Math.random() * 20 }, { type: 'bullet', dmg, speed: 22, arc: 0, r: 3 });
       sfxShot();
     } else if (wp.kind === 'laser') {
       if (dist > wp.def.range) { car.weaponTimers[i] = 0.15; return; }
       car.weaponTimers[i] = wp.def.cooldown;
-      const hitAt = { x: target.x, y: target.y };
-      battle.beams.push({ x1: muzzle.x, y1: muzzle.y, x2: hitAt.x, y2: hitAt.y, life: 0.14 });
-      applyDamage(battle, enemy, dmg, hitAt);
-      sparks(battle, hitAt.x, hitAt.y, 8, '#45e8ff');
+      addBeam(battle, muzzle, target, car.z);
+      applyDamage(battle, enemy, dmg, target);
+      burst(battle, target.x, target.y, enemy.z, 8, 0x45e8ff, { speed: 3, size: 0.11, life: 0.4 });
       sfxLaser();
     }
   });
+}
+
+function addBeam(battle, from, to, z) {
+  const a = new THREE.Vector3(to3x(from.x), to3y(from.y), z);
+  const b = new THREE.Vector3(to3x(to.x), to3y(to.y), z);
+  const len = a.distanceTo(b);
+  const geo = new THREE.CylinderGeometry(0.045, 0.045, len, 6);
+  geo.rotateZ(Math.PI / 2);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    color: 0x66ecff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  mesh.position.copy(a).add(b).multiplyScalar(0.5);
+  mesh.lookAt(b);
+  mesh.rotateY(Math.PI / 2);
+  battle.scene.add(mesh);
+  battle.beams.push({ mesh, life: 0.14 });
 }
 
 function fireProjectile(battle, owner, from, to, opt) {
@@ -392,47 +494,93 @@ function fireProjectile(battle, owner, from, to, opt) {
   });
   Body.setVelocity(body, { x: dirV.x * opt.speed, y: dirV.y * opt.speed + opt.arc });
   Composite.add(battle.engine.world, body);
-  battle.projectiles.push({ body, owner, type: opt.type, dmg: opt.dmg, color: opt.color, r: opt.r, hit: false, life: 4 });
+
+  let mesh;
+  if (opt.type === 'rocket') {
+    mesh = new THREE.Group();
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.5, 8),
+      new THREE.MeshStandardMaterial({ color: 0xd8dce8, metalness: 0.7, roughness: 0.35 }));
+    tube.rotation.z = Math.PI / 2;
+    mesh.add(tube);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.18, 8),
+      new THREE.MeshStandardMaterial({ color: 0xff4b5e, roughness: 0.4 }));
+    tip.rotation.z = -Math.PI / 2;
+    tip.position.x = 0.32;
+    mesh.add(tip);
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.4, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffb020, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+    flame.rotation.z = Math.PI / 2;
+    flame.position.x = -0.42;
+    mesh.add(flame);
+    mesh.userData.flame = flame;
+  } else {
+    mesh = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffe080 }));
+  }
+  battle.scene.add(mesh);
+  battle.projectiles.push({ body, mesh, owner, type: opt.type, dmg: opt.dmg, z: owner.z, hit: false, life: 4, smoke: 0 });
 }
 
 function updateEffects(battle, dt) {
   // projectiles
   for (const p of battle.projectiles) {
     p.life -= dt;
-    if (p.type === 'rocket' && !p.hit && Math.random() < 0.5) {
-      battle.particles.push({ x: p.body.position.x, y: p.body.position.y, vx: 0, vy: 0, life: 0.3, size: 4, color: 'rgba(200,200,200,.5)' });
+    if (p.type === 'rocket' && !p.hit) {
+      p.smoke -= dt;
+      if (p.smoke <= 0) {
+        p.smoke = 0.07;
+        burst(battle, p.body.position.x, p.body.position.y, p.z, 1, 0x9aa0b8, { speed: 0.4, size: 0.16, life: 0.4, grav: -1 });
+      }
     }
     if ((p.hit || p.life <= 0) && !p.removed) {
       p.removed = true;
       Composite.remove(battle.engine.world, p.body);
+      battle.scene.remove(p.mesh);
     }
   }
   battle.projectiles = battle.projectiles.filter(p => !p.removed);
-  // particules / rayons / textes
-  for (const s of battle.particles) {
-    s.x += (s.vx || 0) * dt; s.y += (s.vy || 0) * dt;
-    if (s.vy !== undefined) s.vy += 500 * dt;
-    s.life -= dt;
+
+  // bursts de particules
+  for (const b of battle.bursts) {
+    b.life -= dt;
+    if (b.life <= 0) { battle.scene.remove(b.points); b.points.geometry.dispose(); b.points.material.dispose(); continue; }
+    const pos = b.points.geometry.attributes.position;
+    for (let i = 0; i < b.vel.length; i++) {
+      const v = b.vel[i];
+      v.y -= b.grav * dt;
+      pos.array[i * 3] += v.x * dt;
+      pos.array[i * 3 + 1] += v.y * dt;
+      pos.array[i * 3 + 2] += v.z * dt;
+    }
+    pos.needsUpdate = true;
+    b.points.material.opacity = Math.min(1, b.life / b.maxLife * 1.6);
   }
-  battle.particles = battle.particles.filter(s => s.life > 0);
-  for (const b of battle.beams) b.life -= dt;
+  battle.bursts = battle.bursts.filter(b => b.life > 0);
+
+  // ondes de choc
+  for (const w of battle.waves) {
+    w.life -= dt;
+    const k = 1 - w.life / 0.4;
+    w.ring.scale.setScalar(1 + k * 7);
+    w.ring.material.opacity = 0.9 * (1 - k);
+    if (w.life <= 0) { battle.scene.remove(w.ring); w.ring.geometry.dispose(); w.ring.material.dispose(); }
+  }
+  battle.waves = battle.waves.filter(w => w.life > 0);
+
+  // rayons laser
+  for (const b of battle.beams) {
+    b.life -= dt;
+    b.mesh.material.opacity = Math.max(0, b.life / 0.14);
+    if (b.life <= 0) { battle.scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); }
+  }
   battle.beams = battle.beams.filter(b => b.life > 0);
+
+  // textes flottants
   for (const f of battle.floaters) { f.y += f.vy * dt; f.life -= dt; }
   battle.floaters = battle.floaters.filter(f => f.life > 0);
-  battle.shake = Math.max(0, battle.shake - 60 * dt);
-}
 
-function sparks(battle, x, y, n, color) {
-  for (let i = 0; i < n; i++) {
-    const a = Math.random() * Math.PI * 2, sp = 80 + Math.random() * 260;
-    battle.particles.push({
-      x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 80,
-      life: 0.35 + Math.random() * 0.4, size: 2 + Math.random() * 4, color,
-    });
-  }
-}
-function ring(battle, x, y, color) {
-  battle.particles.push({ x, y, life: 0.35, size: 10, ring: true, color });
+  battle.flash.intensity = Math.max(0, battle.flash.intensity - 350 * dt);
+  battle.shake = Math.max(0, battle.shake - 60 * dt);
 }
 
 function updateHud(battle, remaining) {
@@ -442,158 +590,139 @@ function updateHud(battle, remaining) {
   const t = document.getElementById('hud-timer');
   if (battle.time < 0) t.textContent = BATTLE_TIME;
   else if (remaining > 0) t.textContent = Math.ceil(remaining);
-  else { t.textContent = '☠️'; }
-  t.style.color = remaining < 10 ? '#ff6070' : '';
+  else t.textContent = '☠';
+  t.style.color = remaining < 10 ? '#ff6d84' : '';
 }
 
-// ---------- Rendu ----------
+// ---------- rendu 3D ----------
 function resize(battle) {
+  const canvas = battle.canvas;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false);
+  battle.camera.aspect = w / h;
+  battle.camera.updateProjectionMatrix();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  battle.canvas.width = battle.canvas.clientWidth * dpr;
-  battle.canvas.height = battle.canvas.clientHeight * dpr;
+  battle.overlay.width = w * dpr;
+  battle.overlay.height = h * dpr;
   battle.dpr = dpr;
 }
 
-function render(battle, t) {
-  const { ctx, canvas, cars } = battle;
-  const W = canvas.width, H = canvas.height;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-  // fond
-  const sky = ctx.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, '#1a1a3e'); sky.addColorStop(0.6, '#3a2a5e'); sky.addColorStop(1, '#6a3a6e');
-  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
-
-  // caméra dynamique
-  const [a, b] = cars;
-  const midX = (a.chassis.position.x + b.chassis.position.x) / 2;
-  const span = Math.abs(a.chassis.position.x - b.chassis.position.x) + 620;
-  const scale = Math.min(W / span, W / 700);
-  const camX = Math.max(W / (2 * scale), Math.min(ARENA_W - W / (2 * scale), midX));
-  const shx = (Math.random() - 0.5) * battle.shake * battle.dpr;
-  const shy = (Math.random() - 0.5) * battle.shake * battle.dpr;
-  ctx.save();
-  ctx.translate(W / 2 + shx, H * 0.72 + shy);
-  ctx.scale(scale, scale);
-  ctx.translate(-camX, -GROUND_Y);
-
-  // décor lointain
-  ctx.fillStyle = 'rgba(255,220,120,.9)';
-  ctx.beginPath(); ctx.arc(ARENA_W * 0.75, GROUND_Y - 420, 55, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = 'rgba(20,20,50,.55)';
-  for (let i = 0; i < 8; i++) {
-    const bx = i * 190 + 40, bh2 = 90 + ((i * 73) % 140);
-    ctx.fillRect(bx, GROUND_Y - bh2, 120, bh2);
-  }
-
-  // sol
-  ctx.fillStyle = '#2e2e52';
-  ctx.fillRect(-200, GROUND_Y, ARENA_W + 400, 400);
-  ctx.fillStyle = '#3c3c68';
-  ctx.fillRect(-200, GROUND_Y, ARENA_W + 400, 14);
-  ctx.fillStyle = 'rgba(255,255,255,.08)';
-  for (let x = 0; x < ARENA_W; x += 90) ctx.fillRect(x, GROUND_Y + 26, 46, 8);
-
-  // murs
-  for (const wall of [battle.wallL, battle.wallR]) {
-    const wx = wall.position.x;
-    ctx.fillStyle = battle.wallsDeadly ? '#e03050' : '#44447a';
-    ctx.fillRect(wx - 30, GROUND_Y - 640, 60, 640);
-    if (battle.wallsDeadly) {
-      ctx.fillStyle = 'rgba(255,60,80,.35)';
-      ctx.fillRect(wx - 44, GROUND_Y - 640, 88, 640);
-      // pointes
-      ctx.fillStyle = '#ffb0c0';
-      const inward = wall === battle.wallL ? 1 : -1;
-      for (let y = GROUND_Y - 600; y < GROUND_Y; y += 60) {
-        ctx.beginPath();
-        ctx.moveTo(wx + inward * 30, y); ctx.lineTo(wx + inward * 52, y + 18); ctx.lineTo(wx + inward * 30, y + 36);
-        ctx.fill();
-      }
+function syncCar(battle, car, t) {
+  const c = car.chassis;
+  const off = car.centerOffset, ang = c.angle;
+  // centre géométrique du châssis (le centre de masse est décalé par les armes)
+  const cx = c.position.x + off.x * Math.cos(ang) - off.y * Math.sin(ang);
+  const cy = c.position.y + off.x * Math.sin(ang) + off.y * Math.cos(ang);
+  car.yaw.position.set(to3x(cx), to3y(cy), car.z);
+  car.model.bodyGroup.rotation.z = -ang * car.dir;
+  car.spec.wheels.forEach((w, i) => {
+    const wb = car.wheels[i].body;
+    const wm = car.model.wheelMeshes[i];
+    wm.position.set(to3x(wb.position.x), to3y(wb.position.y), car.z);
+    wm.rotation.z = -wb.angle;
+  });
+  // animations : scies/perceuses qui tournent, flammes qui vacillent
+  for (const anim of car.model.spins) {
+    for (const s of anim.spin) {
+      if (anim.axis === 'x') s.rotation.x = t * 20;
+      else s.rotation.z = -t * 16;
     }
   }
-
-  // véhicules
-  for (const car of cars) {
-    for (const w of car.wheels) {
-      drawWheel(ctx, w.body.position.x, w.body.position.y, w.r, w.body.angle, car.wheels.indexOf(w) >= 0 ? car.spec.wheels[car.wheels.indexOf(w)].type : 'basic');
-    }
-    const c = car.chassis;
-    const off = car.centerOffset, ang = c.angle;
-    const cx = c.position.x + off.x * Math.cos(ang) - off.y * Math.sin(ang);
-    const cy = c.position.y + off.x * Math.sin(ang) + off.y * Math.cos(ang);
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(ang);
-    drawBodyLocal(ctx, car.spec, car.dir, car.dead ? 0 : t);
-    ctx.restore();
-    // mini barre de PV au-dessus
-    if (!car.dead) {
-      const bw2 = 90;
-      ctx.fillStyle = 'rgba(0,0,0,.5)';
-      ctx.fillRect(cx - bw2 / 2, cy - car.spec.body.h / 2 - 46, bw2, 9);
-      ctx.fillStyle = car.team === 0 ? '#40b0ff' : '#ff5060';
-      ctx.fillRect(cx - bw2 / 2 + 1, cy - car.spec.body.h / 2 - 45, (bw2 - 2) * Math.max(0, car.hp / car.maxHp), 7);
-    }
+  for (const f of car.model.flames) {
+    const k = 0.8 + Math.sin(t * 31 + car.team) * 0.25;
+    f.scale.set(k, 0.9 + Math.sin(t * 43) * 0.3, k);
   }
+}
+
+function render(battle, t, dt) {
+  const { camera, cars } = battle;
+
+  for (const car of cars) syncCar(battle, car, t);
 
   // projectiles
   for (const p of battle.projectiles) {
-    if (p.hit) continue;
-    const pos = p.body.position;
-    ctx.save();
-    ctx.translate(pos.x, pos.y);
+    if (p.removed || p.hit) continue;
+    p.mesh.position.set(to3x(p.body.position.x), to3y(p.body.position.y), p.z);
     if (p.type === 'rocket') {
-      ctx.rotate(Math.atan2(p.body.velocity.y, p.body.velocity.x));
-      ctx.fillStyle = '#d0d4e0'; ctx.fillRect(-10, -4, 20, 8);
-      ctx.fillStyle = '#ff5060';
-      ctx.beginPath(); ctx.moveTo(10, -4); ctx.lineTo(17, 0); ctx.lineTo(10, 4); ctx.fill();
-      ctx.fillStyle = '#ffb020';
-      ctx.beginPath(); ctx.arc(-12, 0, 4 + Math.random() * 3, 0, Math.PI * 2); ctx.fill();
-    } else {
-      ctx.fillStyle = p.color;
-      ctx.beginPath(); ctx.arc(0, 0, p.r, 0, Math.PI * 2); ctx.fill();
+      p.mesh.rotation.z = -Math.atan2(p.body.velocity.y, p.body.velocity.x);
+      const f = p.mesh.userData.flame;
+      f.scale.setScalar(0.8 + Math.random() * 0.5);
     }
-    ctx.restore();
   }
 
-  // rayons laser
-  for (const beam of battle.beams) {
-    ctx.strokeStyle = 'rgba(90,230,255,' + (beam.life / 0.14) + ')';
-    ctx.lineWidth = 5;
-    ctx.beginPath(); ctx.moveTo(beam.x1, beam.y1); ctx.lineTo(beam.x2, beam.y2); ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,255,255,' + (beam.life / 0.14) + ')';
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(beam.x1, beam.y1); ctx.lineTo(beam.x2, beam.y2); ctx.stroke();
+  // murs
+  battle.wall3L.position.x = to3x(battle.wallL.position.x + 30);
+  battle.wall3R.position.x = to3x(battle.wallR.position.x - 30);
+  for (const w3 of [battle.wall3L, battle.wall3R]) {
+    const glow = w3.userData.glow;
+    if (battle.wallsDeadly) {
+      glow.material.opacity = 0.3 + Math.sin(t * 9) * 0.18;
+      w3.userData.wallMat.emissive = new THREE.Color(0x8f1024);
+    }
   }
 
-  // particules
-  for (const s of battle.particles) {
-    if (s.ring) {
-      ctx.strokeStyle = s.color;
-      ctx.globalAlpha = s.life / 0.35;
-      ctx.lineWidth = 6;
-      ctx.beginPath(); ctx.arc(s.x, s.y, s.size + (0.35 - s.life) * 500, 0, Math.PI * 2); ctx.stroke();
-      ctx.globalAlpha = 1;
-    } else {
-      ctx.fillStyle = s.color;
-      ctx.globalAlpha = Math.min(1, s.life * 2.5);
-      ctx.fillRect(s.x - s.size / 2, s.y - s.size / 2, s.size, s.size);
-      ctx.globalAlpha = 1;
-    }
+  // caméra : cadre les deux véhicules, avec inertie
+  const [a, b] = cars;
+  const ax = to3x(a.chassis.position.x), bx = to3x(b.chassis.position.x);
+  const midX = (ax + bx) / 2;
+  const span = Math.abs(ax - bx) + 3.2;
+  const vFov = camera.fov * Math.PI / 180;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+  const targetDist = Math.min(Math.max((span / 2) / Math.tan(hFov / 2), 6.5), 46);
+  battle.camX += (midX - battle.camX) * Math.min(1, dt * 5);
+  battle.camDist += (targetDist - battle.camDist) * Math.min(1, dt * 3.5);
+  const shk = battle.shake * 0.012;
+  camera.position.set(
+    battle.camX + (Math.random() - 0.5) * shk,
+    2.0 + battle.camDist * 0.13 + (Math.random() - 0.5) * shk,
+    battle.camDist
+  );
+  camera.lookAt(battle.camX, 0.85 + battle.camDist * 0.075, 0);
+  // le brouillard suit la caméra pour ne jamais noyer les combattants
+  battle.scene.fog.near = battle.camDist + 9;
+  battle.scene.fog.far = battle.camDist + 85;
+
+  renderer.render(battle.scene, camera);
+  renderOverlay(battle);
+}
+
+// Superposition 2D : dégâts flottants + mini barres de PV projetées.
+function renderOverlay(battle) {
+  const ctx = battle.overlay.getContext('2d');
+  const W = battle.overlay.width, H = battle.overlay.height;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const v = new THREE.Vector3();
+  const project = (x2, y2, z) => {
+    v.set(to3x(x2), to3y(y2), z).project(battle.camera);
+    return [(v.x + 1) / 2 * W, (1 - v.y) / 2 * H];
+  };
+
+  // mini barres de PV
+  for (const car of battle.cars) {
+    if (car.dead) continue;
+    const p = car.chassis.position;
+    const [sx, sy] = project(p.x, p.y - car.spec.body.h / 2 - 46, car.z);
+    const bw = 0.062 * W;
+    ctx.fillStyle = 'rgba(4,4,14,.55)';
+    ctx.beginPath(); ctx.roundRect(sx - bw / 2, sy, bw, 8 * battle.dpr / 2 + 4, 4); ctx.fill();
+    ctx.fillStyle = car.team === 0 ? '#4fc3ff' : '#ff5d7a';
+    const ratio = Math.max(0, car.hp / car.maxHp);
+    ctx.beginPath(); ctx.roundRect(sx - bw / 2 + 1.5, sy + 1.5, (bw - 3) * ratio, 8 * battle.dpr / 2 + 1, 3); ctx.fill();
   }
 
   // dégâts flottants
   ctx.textAlign = 'center';
+  const fs = Math.round(15 * battle.dpr);
   for (const f of battle.floaters) {
-    ctx.font = '900 26px -apple-system, sans-serif';
-    ctx.globalAlpha = Math.min(1, f.life * 2);
+    const [sx, sy] = project(f.x, f.y, f.z);
+    ctx.font = `800 ${fs}px 'Baloo 2', sans-serif`;
+    ctx.globalAlpha = Math.min(1, f.life * 2.2);
+    ctx.strokeStyle = 'rgba(0,0,8,.7)';
+    ctx.lineWidth = 4;
+    ctx.strokeText(f.text, sx, sy);
     ctx.fillStyle = f.color;
-    ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 4;
-    ctx.strokeText(f.text, f.x, f.y);
-    ctx.fillText(f.text, f.x, f.y);
-    ctx.globalAlpha = 1;
+    ctx.fillText(f.text, sx, sy);
   }
-
-  ctx.restore();
+  ctx.globalAlpha = 1;
 }

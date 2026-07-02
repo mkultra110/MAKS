@@ -1,9 +1,11 @@
 // Service worker : jeu 100% jouable hors-ligne.
-const CACHE = 'maks-v1';
+const CACHE = 'maks-v2';
 const ASSETS = [
   '.', 'index.html', 'css/style.css',
   'js/main.js', 'js/data.js', 'js/state.js', 'js/car.js', 'js/garage.js', 'js/battle.js', 'js/sfx.js',
-  'js/lib/matter.min.js',
+  'js/render3d.js', 'js/models3d.js', 'js/thumbs.js',
+  'js/lib/matter.min.js', 'js/lib/three.module.min.js',
+  'fonts/baloo-2-latin-400-normal.woff2', 'fonts/baloo-2-latin-700-normal.woff2', 'fonts/baloo-2-latin-800-normal.woff2',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
 ];
 

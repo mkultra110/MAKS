@@ -1,21 +1,28 @@
 # 🐱⚔️ MAKS — Mega Arena Kombat Stars
 
-Jeu mobile de combat de machines inspiré de **CATS: Crash Arena Turbo Stars** — en mieux :
-pas de minuteurs d'attente, pas de pubs, 100 % jouable hors-ligne, physique 2D réaliste.
+Jeu mobile de combat de machines **en 3D**, inspiré de *CATS: Crash Arena Turbo Stars* — en mieux :
+pas de minuteurs d'attente, pas de pubs, 100 % jouable hors-ligne.
+
+- **Rendu 3D temps réel** (Three.js) : véhicules modélisés en 3D, arène nocturne avec
+  gratte-ciels, projecteurs de stade et lune, ombres portées, explosions, ondes de choc,
+  rayons laser, caméra cinématique qui suit l'action.
+- **Physique réaliste** (Matter.js) : les véhicules roulent, se percutent, grimpent
+  l'un sur l'autre, se retournent.
+- **Design soigné** : typo Baloo 2 embarquée, icônes SVG dessinées main, garage avec
+  podium tournant, écran VS animé, confettis de victoire.
 
 ## 🎮 Le jeu
 
-- **Construis ta machine** : choisis un corps (Classique, Titan, Surfeur, Baleine, Poney),
+- **Construis ta machine** : un corps (Classique, Titan, Surfeur, Baleine, Poney),
   deux roues, des armes (Lame, Scie, Perceuse, Dard, Roquettes, Laser, Mitrailleuse)
   et des gadgets (Booster, Rétrofusée, Kit de soin, Blindage).
 - **Gère ton énergie** ⚡ : chaque arme/gadget a un coût, la capacité dépend du corps.
-- **Combats automatiques** : les chats pilotent tout seuls ! Physique complète
-  (Matter.js) : les véhicules roulent, se percutent, se retournent…
+- **Combats automatiques** : les chats pilotent tout seuls !
 - **Conditions de victoire** : détruire l'adversaire, le retourner (2,5 s sur le dos = KO),
   ou le pousser dans les **murs de la mort** qui se referment après 45 s.
 - **Progression** : victoires → pièces d'or + nouvelles pièces (rareté 1★ à 5★),
-  améliore tes pièces (niveau max = 1 + 5×étoiles), recycle les doublons,
-  grimpe les étapes du championnat (3 victoires par étape, adversaires de plus en plus forts).
+  amélioration (niveau max = 1 + 5×étoiles), recyclage, étapes de championnat
+  avec adversaires générés de plus en plus forts.
 - **Sauvegarde automatique** en local.
 
 ## ▶️ Jouer dans un navigateur
@@ -25,7 +32,8 @@ npx http-server www -p 8080
 # puis ouvrir http://localhost:8080 (idéalement en mode responsive iPhone)
 ```
 
-Aucun build nécessaire : HTML/CSS/JS pur + Matter.js embarqué (`www/js/lib/matter.min.js`).
+Aucun build nécessaire : HTML/CSS/JS pur. Three.js et Matter.js sont embarqués
+dans `www/js/lib/` (zéro dépendance réseau).
 
 ## 📱 Construire l'app iOS (Capacitor)
 
@@ -46,15 +54,30 @@ puis « Partager → Sur l'écran d'accueil » pour l'installer en plein écran.
 
 ```
 www/
-  index.html        écrans (garage, VS, combat, résultat)
-  css/style.css     interface mobile (safe-areas iOS, portrait)
+  index.html        écrans (accueil, garage, VS, combat, résultat) + icônes SVG
+  css/style.css     design system mobile (Baloo 2, safe-areas iOS, portrait)
+  fonts/            police Baloo 2 embarquée (woff2)
   js/data.js        catalogue des pièces + équilibrage + RNG à graine
   js/state.js       sauvegarde, inventaire, montage, adversaires, récompenses
-  js/car.js         géométrie + dessin des véhicules (procédural, zéro asset)
-  js/battle.js      moteur de combat (physique Matter.js, IA, effets)
-  js/garage.js      interface du garage
+  js/car.js         géométrie logique des véhicules (physique ET 3D)
+  js/models3d.js    modèles 3D procéduraux (véhicules, armes, arène, murs)
+  js/render3d.js    renderers, scènes studio, éclairages
+  js/thumbs.js      vignettes 3D des pièces et véhicules (avec cache)
+  js/battle.js      moteur de combat (physique Matter.js + rendu 3D + IA)
+  js/garage.js      garage avec aperçu 3D sur podium tournant
   js/sfx.js         sons procéduraux WebAudio (aucun fichier audio)
-  js/main.js        navigation et boucle de jeu
+  js/main.js        navigation, écran d'accueil 3D, confettis
   sw.js             service worker (hors-ligne)
 capacitor.config.json  config iOS
 ```
+
+## 🧠 Comment marche un combat
+
+1. Chaque véhicule équipé devient un corps rigide composé (châssis + armes soudées)
+   avec deux roues contraintes en rotation — la simulation est 100 % physique.
+2. L'IA conduit vers l'adversaire (ou garde ses distances avec la Rétrofusée),
+   déclenche boosters et armes à distance selon leur cadence.
+3. Les dégâts de mêlée s'appliquent au contact (période de 250 ms), les projectiles
+   volent en cloche avec dégâts de zone pour les roquettes.
+4. La 3D n'est qu'une « peau » : positions et rotations sont recopiées de la
+   physique 2D vers la scène Three.js à chaque frame (x → x, y → hauteur).
