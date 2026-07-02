@@ -58,6 +58,14 @@ npx http-server www -p 8080
 Aucun build nécessaire : HTML/CSS/JS pur. Three.js et Matter.js sont embarqués
 dans `www/js/lib/` (zéro dépendance réseau).
 
+## 🏪 Publier sur l'App Store
+
+Tout est préparé : icône 1024 et écran de lancement dans `resources/`,
+fiche App Store rédigée, guide complet pas à pas →
+**[docs/APPSTORE.md](docs/APPSTORE.md)** et **[docs/APPSTORE-FICHE.md](docs/APPSTORE-FICHE.md)**.
+Il te faut un compte Apple Developer (99 €/an) et un accès à un Mac avec Xcode
+(ou une CI cloud type Codemagic — détaillé dans le guide).
+
 ## 📱 Construire l'app iOS (Capacitor)
 
 Sur un Mac avec Xcode installé :

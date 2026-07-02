@@ -2,10 +2,18 @@
   "appId": "com.maks.arena",
   "appName": "MAKS",
   "webDir": "www",
-  "backgroundColor": "#12122aff",
+  "backgroundColor": "#0d0d22ff",
   "ios": {
     "contentInset": "never",
-    "backgroundColor": "#12122aff",
+    "backgroundColor": "#0d0d22ff",
     "preferredContentMode": "mobile"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "launchAutoHide": true,
+      "backgroundColor": "#0d0d22ff",
+      "showSpinner": false
+    }
   }
 }
