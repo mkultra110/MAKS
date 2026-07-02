@@ -1,8 +1,9 @@
 // Vignettes 3D (pièces et véhicules) rendues hors-écran, avec cache.
 import * as THREE from 'three';
 import { createRenderer, studioLights } from './render3d.js';
-import { createPartModel, createCarModel, poseCarStatic } from './models3d.js';
+import { createPartModel, createCarModel, poseCarStatic, catHead } from './models3d.js';
 import { buildCarSpec } from './car.js';
+import { COPILOTS } from './data.js';
 
 let renderer = null, scene = null, camera = null, holder = null, podium = null;
 const cache = new Map();
@@ -45,9 +46,27 @@ function snapshot(model, fit, { w = 320, h = 240, podiumY = null, lookY = null }
   return url;
 }
 
-// Vignette d'une pièce (cachée par type/étoiles — le niveau ne change pas le visuel).
+// Portrait d'un chat (co-pilotes, avatars des adversaires).
+export function avatarThumb(color) {
+  const key = `avatar:${color}`;
+  if (cache.has(key)) return cache.get(key);
+  const head = catHead(0.55, color);
+  const g = new THREE.Group();
+  g.add(head);
+  head.position.y = 0.06;
+  head.rotation.y = 0.4; // visage tourné vers la caméra
+  const url = snapshot(g, 1.25, {});
+  cache.set(key, url);
+  return url;
+}
+
+export function copilotThumb(id) {
+  return avatarThumb(COPILOTS[id].color);
+}
+
+// Vignette d'une pièce (cachée par type/peinture — le niveau ne change pas le visuel).
 export function partThumb(part) {
-  const key = `${part.kind}:${part.type}`;
+  const key = `${part.kind}:${part.type}:${part.paint || ''}`;
   if (cache.has(key)) return cache.get(key);
   const model = createPartModel(part);
   const fit = model.userData.fit || 1.5;

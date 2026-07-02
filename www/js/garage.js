@@ -1,11 +1,11 @@
 // Écran garage : aperçu 3D du véhicule, emplacements, inventaire, fiche pièce.
 import * as THREE from 'three';
-import { KIND_LABEL, partDef, partStats, maxLevel, upgradeCost, recycleValue } from './data.js';
-import { state, save, isEquipped, buildLoadout, computeCarStats, equip, unequip, removePart, WINS_PER_STAGE } from './state.js';
+import { KIND_LABEL, partDef, partStats, maxLevel, upgradeCost, recycleValue, COPILOTS, PAINTS, LEAGUES, leagueIndex } from './data.js';
+import { state, save, isEquipped, buildLoadout, computeCarStats, equip, unequip, removePart, MEDALS_TO_ADVANCE } from './state.js';
 import { buildCarSpec } from './car.js';
 import { createRenderer, createStudioScene } from './render3d.js';
 import { createCarModel, poseCarStatic } from './models3d.js';
-import { partThumb } from './thumbs.js';
+import { partThumb, copilotThumb } from './thumbs.js';
 import { sfxClick } from './sfx.js';
 
 let currentTab = 'body';
@@ -112,13 +112,65 @@ export function initGarage() {
     closeSheet();
     renderGarage();
   });
+  document.getElementById('copilot-close').addEventListener('click', closeCopilotSheet);
+  document.getElementById('copilot-sheet').addEventListener('click', e => {
+    if (e.target.id === 'copilot-sheet') closeCopilotSheet();
+  });
+}
+
+// ---- co-pilotes ----
+function openCopilotSheet() {
+  const sheet = document.getElementById('copilot-sheet');
+  sheet.classList.remove('hidden');
+  const list = document.getElementById('copilot-list');
+  list.innerHTML = '';
+  const li = leagueIndex(state.stage);
+  for (const [id, cp] of Object.entries(COPILOTS)) {
+    const locked = li < cp.unlock;
+    const el = document.createElement('div');
+    el.className = 'copilot-card' + (state.copilot === id ? ' selected' : '') + (locked ? ' locked' : '');
+    const img = document.createElement('img');
+    img.src = copilotThumb(id);
+    el.appendChild(img);
+    const info = document.createElement('div');
+    const nm = document.createElement('div');
+    nm.className = 'cp-name';
+    nm.textContent = cp.name;
+    info.appendChild(nm);
+    const desc = document.createElement('div');
+    desc.className = 'cp-desc';
+    desc.textContent = `${cp.passive} · ${cp.active}`;
+    info.appendChild(desc);
+    el.appendChild(info);
+    if (locked) {
+      const lock = document.createElement('div');
+      lock.className = 'cp-lock';
+      lock.textContent = `Ligue ${LEAGUES[cp.unlock].name}`;
+      el.appendChild(lock);
+    } else {
+      el.addEventListener('click', () => {
+        sfxClick();
+        state.copilot = id;
+        save();
+        closeCopilotSheet();
+        renderGarage();
+      });
+    }
+    list.appendChild(el);
+  }
+}
+function closeCopilotSheet() {
+  document.getElementById('copilot-sheet').classList.add('hidden');
 }
 
 export function renderGarage() {
   document.getElementById('coins').textContent = state.coins;
-  document.getElementById('stage-label').textContent =
-    `Étape ${state.stage} · ${state.stageWins}/${WINS_PER_STAGE}`;
-  document.getElementById('stage-fill').style.width = (state.stageWins / WINS_PER_STAGE * 100) + '%';
+  const li = leagueIndex(state.stage);
+  const chip = document.getElementById('stage-label');
+  chip.textContent = `${LEAGUES[li].name} · Ét. ${state.stage}`;
+  chip.parentElement.querySelector('.ic').style.color = LEAGUES[li].color;
+  document.getElementById('stage-fill').style.width =
+    (state.medals.length / MEDALS_TO_ADVANCE * 100) + '%';
 
   const lo = buildLoadout();
   const stats = computeCarStats(lo);
@@ -142,6 +194,20 @@ export function renderGarage() {
 function renderSlots(lo) {
   const row = document.getElementById('slots-row');
   row.innerHTML = '';
+
+  // emplacement co-pilote en premier
+  const cpSlot = document.createElement('div');
+  cpSlot.className = 'slot filled';
+  const cpImg = document.createElement('img');
+  cpImg.src = copilotThumb(state.copilot);
+  cpSlot.appendChild(cpImg);
+  const cpTag = document.createElement('div');
+  cpTag.className = 'slot-tag';
+  cpTag.textContent = 'Co-pilote';
+  cpSlot.appendChild(cpTag);
+  cpSlot.addEventListener('click', () => { sfxClick(); openCopilotSheet(); });
+  row.appendChild(cpSlot);
+
   const bDef = lo.body ? partDef(lo.body) : null;
   const defs = [
     { label: 'Corps', part: lo.body },
@@ -225,6 +291,28 @@ function openSheet(part) {
     el.appendChild(document.createTextNode(String(v)));
     list.appendChild(el);
   }
+  // peinture (corps uniquement)
+  const paintRow = document.getElementById('paint-row');
+  paintRow.innerHTML = '';
+  if (part.kind === 'body') {
+    paintRow.classList.remove('hidden');
+    for (const color of PAINTS) {
+      const sw = document.createElement('button');
+      sw.className = 'paint-swatch' + ((part.paint || '') === color ? ' selected' : '');
+      sw.style.background = `linear-gradient(180deg, ${color}, ${color}cc)`;
+      sw.addEventListener('click', () => {
+        sfxClick();
+        part.paint = part.paint === color ? undefined : color;
+        save();
+        openSheet(part);
+        renderGarage();
+      });
+      paintRow.appendChild(sw);
+    }
+  } else {
+    paintRow.classList.add('hidden');
+  }
+
   const equipped = isEquipped(part.id);
   const btnEquip = document.getElementById('btn-equip');
   btnEquip.textContent = equipped ? (part.kind === 'body' ? 'Équipé' : 'Retirer') : 'Équiper';

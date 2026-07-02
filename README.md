@@ -3,9 +3,11 @@
 Jeu mobile de combat de machines **en 3D**, inspiré de *CATS: Crash Arena Turbo Stars* — en mieux :
 pas de minuteurs d'attente, pas de pubs, 100 % jouable hors-ligne.
 
-- **Rendu 3D temps réel** (Three.js) : véhicules modélisés en 3D, arène nocturne avec
-  gratte-ciels, projecteurs de stade et lune, ombres portées, explosions, ondes de choc,
-  rayons laser, caméra cinématique qui suit l'action.
+- **Rendu 3D temps réel** (Three.js) : véhicules modélisés en 3D avec détails par
+  châssis (aileron, rivets, nageoire, antenne, phares, décalcos), arène nocturne avec
+  **tribunes et foule animée**, panneaux publicitaires, gratte-ciels, projecteurs et lune,
+  ombres portées, **bloom** (post-processing), explosions, ondes de choc, rayons laser,
+  poussière des roues, caméra cinématique qui suit l'action.
 - **Physique réaliste** (Matter.js) : les véhicules roulent, se percutent, grimpent
   l'un sur l'autre, se retournent.
 - **Design soigné** : typo Baloo 2 embarquée, icônes SVG dessinées main, garage avec
@@ -16,13 +18,23 @@ pas de minuteurs d'attente, pas de pubs, 100 % jouable hors-ligne.
 - **Construis ta machine** : un corps (Classique, Titan, Surfeur, Baleine, Poney),
   deux roues, des armes (Lame, Scie, Perceuse, Dard, Roquettes, Laser, Mitrailleuse)
   et des gadgets (Booster, Rétrofusée, Kit de soin, Blindage).
+- **Peins ton châssis** : 10 couleurs de carrosserie par corps.
+- **Choisis ton co-pilote** : Ronron (soin), Tigrou (frénésie de mêlée),
+  Zigzag (méga-boost) ou Pixel (surcharge des armes) — un passif permanent
+  + une capacité automatique par combat. Débloqués en montant de ligue.
 - **Gère ton énergie** ⚡ : chaque arme/gadget a un coût, la capacité dépend du corps.
 - **Combats automatiques** : les chats pilotent tout seuls !
 - **Conditions de victoire** : détruire l'adversaire, le retourner (2,5 s sur le dos = KO),
   ou le pousser dans les **murs de la mort** qui se referment après 45 s.
+- **Championnat comme dans CATS** : chaque étape est un groupe de **14 adversaires**
+  (des « joueurs » générés avec nom, avatar et machine reproductibles). Chacun détient
+  une **médaille** : bats-le pour la lui prendre. **8 médailles = promotion** à l'étape
+  suivante. Le **Grand Combat** enchaîne les adversaires restants sans pause pour une
+  promotion express — une seule défaite met fin à la série.
+- **Ligues** : Bois → Bronze → Argent → Or → Diamant → Légende, avec primes de pièces
+  et co-pilotes à débloquer.
 - **Progression** : victoires → pièces d'or + nouvelles pièces (rareté 1★ à 5★),
-  amélioration (niveau max = 1 + 5×étoiles), recyclage, étapes de championnat
-  avec adversaires générés de plus en plus forts.
+  amélioration (niveau max = 1 + 5×étoiles), recyclage.
 - **Sauvegarde automatique** en local.
 
 ## ▶️ Jouer dans un navigateur

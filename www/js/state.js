@@ -2,16 +2,20 @@
 import {
   BODIES, WHEELS, WEAPONS, GADGETS, partDef, partMult, bodyEnergy,
   newPart, seededRng, pick, randomPart, rollStars, CAT_NAMES,
+  LEAGUES, leagueIndex,
 } from './data.js';
 
 const SAVE_KEY = 'maks_save_v1';
-export const WINS_PER_STAGE = 3;
+export const ROSTER_SIZE = 14;        // 14 adversaires par étape, comme dans CATS
+export const MEDALS_TO_ADVANCE = 8;   // médailles pour être promu (top du classement)
 
 export const state = {
   coins: 0,
   stage: 1,
-  stageWins: 0,
+  medals: [],              // indices des adversaires battus à l'étape courante
   totalWins: 0,
+  lastLeague: 0,           // indice de la dernière ligue célébrée
+  copilot: 'ronron',
   inventory: [],           // liste de pièces
   equipped: { body: null, wheels: [null, null], weapons: [], gadgets: [] }, // ids
 };
@@ -27,6 +31,9 @@ export function load() {
     try {
       const s = JSON.parse(raw);
       Object.assign(state, s);
+      if (state.copilot === undefined) state.copilot = 'ronron';
+      if (state.lastLeague === undefined) state.lastLeague = leagueIndex(state.stage);
+      if (!Array.isArray(state.medals)) state.medals = [];
       return;
     } catch (e) {}
   }
@@ -146,11 +153,15 @@ export function removePart(part) {
   save();
 }
 
-// ---- Génération d'adversaires (déterministe par étape/manche) ----
+// ---- Génération d'adversaires (déterministe par étape/place dans le groupe) ----
+// Chaque étape du championnat est un groupe de 14 « joueurs » : leur machine,
+// leur nom et leur avatar sont reproductibles (comme des builds d'autres joueurs).
+const AVATAR_COLORS = [0xffd9a0, 0xff9a3e, 0xb0b8d0, 0x8f7bff, 0xf4a9c8, 0x9adf9f, 0x7ad4e0, 0xd9c08a];
+
 export function makeOpponent(stage, round, quick = false) {
   const seed = quick ? (Date.now() & 0x7fffffff) : (stage * 977 + round * 131 + 7);
   const rng = seededRng(seed);
-  const power = 1 + (stage - 1) * 0.22 + round * 0.06;
+  const power = 1 + (stage - 1) * 0.22 + round * 0.045;
   const mkLevel = () => Math.max(1, Math.round(1 + (stage - 1) * 0.9 + rng() * 2 - (quick ? 1 : 0)));
 
   const bodyType = pick(rng, Object.keys(BODIES));
@@ -183,24 +194,55 @@ export function makeOpponent(stage, round, quick = false) {
   }
   const lo = { body, wheels, weapons, gadgets };
   return {
-    name: pick(rng, CAT_NAMES),
+    name: quick ? pick(rng, CAT_NAMES) : CAT_NAMES[(stage * 3 + round * 5) % CAT_NAMES.length],
+    avatar: AVATAR_COLORS[Math.floor(rng() * AVATAR_COLORS.length)],
+    idx: quick ? null : round,
     loadout: lo,
     statBoost: Math.max(0.75, power * 0.72), // multiplicateur global IA
   };
 }
 
+// Le groupe complet des 14 adversaires de l'étape courante.
+export function makeRoster(stage) {
+  const roster = [];
+  for (let i = 0; i < ROSTER_SIZE; i++) roster.push(makeOpponent(stage, i));
+  return roster;
+}
+
+// ---- Bonus passifs du co-pilote ----
+export function copilotMods(id) {
+  switch (id) {
+    case 'ronron': return { hp: 1.10, melee: 1, ranged: 1, speed: 1 };
+    case 'tigrou': return { hp: 1, melee: 1.12, ranged: 1, speed: 1 };
+    case 'zigzag': return { hp: 1, melee: 1, ranged: 1, speed: 1.10 };
+    case 'pixel':  return { hp: 1, melee: 1, ranged: 1.12, speed: 1 };
+    default: return { hp: 1, melee: 1, ranged: 1, speed: 1 };
+  }
+}
+
 // ---- Récompenses ----
-export function winRewards(quick) {
+// opponentIdx : place de l'adversaire battu dans le groupe (championnat), null en combat rapide.
+export function winRewards(quick, opponentIdx = null) {
   const stage = state.stage;
-  const coins = Math.round((quick ? 12 : 20) + stage * (quick ? 5 : 9) + Math.random() * 10);
-  state.coins += coins;
-  let part = null;
+  let coins = Math.round((quick ? 12 : 20) + stage * (quick ? 5 : 9) + Math.random() * 10);
+  let part = null, leagueUp = null, medal = false, promoted = false;
   if (!quick) {
     state.totalWins++;
-    state.stageWins++;
-    if (state.stageWins >= WINS_PER_STAGE) {
+    if (opponentIdx !== null && !state.medals.includes(opponentIdx)) {
+      state.medals.push(opponentIdx);
+      medal = true;
+    }
+    if (state.medals.length >= MEDALS_TO_ADVANCE) {
       state.stage++;
-      state.stageWins = 0;
+      state.medals = [];
+      promoted = true;
+      coins += 25 + stage * 6; // prime de promotion
+      const li = leagueIndex(state.stage);
+      if (li > state.lastLeague) {
+        state.lastLeague = li;
+        leagueUp = { ...LEAGUES[li], bonus: 60 * li };
+        coins += leagueUp.bonus;
+      }
     }
     // une pièce toutes les 2 victoires de championnat
     if (state.totalWins % 2 === 0) {
@@ -208,6 +250,7 @@ export function winRewards(quick) {
       state.inventory.push(part);
     }
   }
+  state.coins += coins;
   save();
-  return { coins, part };
+  return { coins, part, leagueUp, medal, promoted };
 }

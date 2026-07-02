@@ -1,9 +1,15 @@
 // Moteur de combat : physique Matter.js + rendu 3D Three.js + IA automatique.
 import * as THREE from 'three';
 import { buildCarSpec } from './car.js';
+import { copilotMods } from './state.js';
+import { COPILOTS } from './data.js';
 import { createRenderer } from './render3d.js';
 import { createCarModel, createArena, createDeathWall, skyTexture, S } from './models3d.js';
 import { sfxHit, sfxBoom, sfxLaser, sfxShot } from './sfx.js';
+import { EffectComposer } from './lib/postprocessing/EffectComposer.js';
+import { RenderPass } from './lib/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from './lib/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from './lib/postprocessing/OutputPass.js';
 
 const { Engine, Bodies, Body, Composite, Constraint, Events, Vector } = Matter;
 
@@ -22,7 +28,8 @@ const to3y = y => (GROUND_Y - y) * S;
 
 // ---------- construction d'un véhicule physique ----------
 function makeCar(engine, lo, opts) {
-  const { x, dir, team, name, statBoost = 1 } = opts;
+  const { x, dir, team, name, statBoost = 1, copilot = null } = opts;
+  const mods = copilotMods(copilot);
   const spec = buildCarSpec(lo);
   const group = Body.nextGroup(true);
   const bw = spec.body.w, bh = spec.body.h;
@@ -58,7 +65,7 @@ function makeCar(engine, lo, opts) {
   }
   Composite.add(engine.world, [chassis, ...wheels.map(w => w.body), ...axles]);
 
-  const maxHp = Math.round(spec.stats.hp * statBoost);
+  const maxHp = Math.round(spec.stats.hp * statBoost * mods.hp);
   return {
     team, name, dir, spec, chassis, wheels, axles, group,
     centerOffset,
@@ -66,6 +73,9 @@ function makeCar(engine, lo, opts) {
     heal: spec.stats.heal,
     boost: spec.stats.hasBooster, backpedal: spec.stats.hasBackpedal,
     dmgMult: statBoost,
+    copilot,
+    meleeMult: mods.melee, rangedMult: mods.ranged, speedMult: mods.speed,
+    cdMult: 1, frenzyUntil: -1, copilotUsed: false,
     weaponTimers: spec.weapons.map(() => 0),
     meleeLast: spec.weapons.map(() => 0),
     boostTimer: 1.2,
@@ -106,7 +116,7 @@ function buildScene(battle) {
   rim.position.set(-8, 6, -9);
   scene.add(rim);
 
-  createArena(scene, ARENA_W);
+  battle.env = createArena(scene, ARENA_W);
 
   // véhicules
   for (const car of battle.cars) {
@@ -129,11 +139,19 @@ function buildScene(battle) {
   battle.flash = new THREE.PointLight(0xffb060, 0, 30);
   scene.add(battle.flash);
 
-  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 120);
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 160);
   camera.position.set(0, 2.6, 12);
   battle.scene = scene;
   battle.camera = camera;
   battle.camX = 0; battle.camDist = 12;
+
+  // post-processing : bloom léger (lasers, phares, explosions, néons)
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.65, 0.82);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
+  battle.composer = composer;
 }
 
 // ---------- effets : jets de particules (un burst = un THREE.Points) ----------
@@ -175,7 +193,7 @@ function flashLight(battle, x2, y2, intensity = 60) {
 
 // ---------- combat ----------
 export function startBattle(config) {
-  const { playerLoadout, opponent, onEnd } = config;
+  const { playerLoadout, opponent, onEnd, copilot = null } = config;
   const canvas = document.getElementById('battle-canvas');
   if (!renderer) renderer = createRenderer(canvas);
 
@@ -187,7 +205,7 @@ export function startBattle(config) {
   const wallR = Bodies.rectangle(ARENA_W + 30, GROUND_Y - 300, 60, 700, { isStatic: true, label: 'wall:R' });
   Composite.add(engine.world, [ground, wallL, wallR]);
 
-  const me = makeCar(engine, playerLoadout, { x: 390, dir: 1, team: 0, name: 'Toi' });
+  const me = makeCar(engine, playerLoadout, { x: 390, dir: 1, team: 0, name: 'Toi', copilot });
   const foe = makeCar(engine, opponent.loadout, { x: ARENA_W - 390, dir: -1, team: 1, name: opponent.name, statBoost: opponent.statBoost });
 
   const battle = {
@@ -235,6 +253,7 @@ export function stopBattle() {
   Composite.clear(current.engine.world, false);
   Engine.clear(current.engine);
   // libère la scène 3D
+  current.composer?.dispose();
   current.scene.traverse(o => {
     if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose?.();
   });
@@ -261,7 +280,14 @@ function handleMeleePair(battle, pair) {
     if (wp.kind !== 'melee') continue;
     if (battle.time - owner.meleeLast[wIdx] >= MELEE_TICK) {
       owner.meleeLast[wIdx] = battle.time;
-      const dmg = wp.def.dps * wp.mult * MELEE_TICK * owner.dmgMult;
+      // Tigrou : frénésie au premier coup porté
+      if (owner.copilot === 'tigrou' && !owner.copilotUsed) {
+        owner.copilotUsed = true;
+        owner.frenzyUntil = battle.time + 4;
+        showToast(battle, 'Tigrou enrage ! Dégâts ×1,5');
+      }
+      const frenzy = battle.time < owner.frenzyUntil ? 1.5 : 1;
+      const dmg = wp.def.dps * wp.mult * MELEE_TICK * owner.dmgMult * owner.meleeMult * frenzy;
       const at = pair.collision.supports[0] || target.chassis.position;
       applyDamage(battle, target, dmg, at);
       burst(battle, at.x, at.y, target.z, 7, 0xffd060, { speed: 3.6, size: 0.1, life: 0.45 });
@@ -350,6 +376,17 @@ function killCar(battle, car, cause) {
   showMsg(battle, playerWon ? 'K.O. !' : 'PERDU…');
 }
 
+function showToast(battle, text) {
+  const el = document.getElementById('battle-toast');
+  el.textContent = text;
+  el.classList.remove('hidden');
+  el.style.animation = 'none';
+  void el.offsetWidth;
+  el.style.animation = '';
+  clearTimeout(battle.toastTimer);
+  battle.toastTimer = setTimeout(() => el.classList.add('hidden'), 1600);
+}
+
 function showMsg(battle, text) {
   const el = document.getElementById('battle-msg');
   if (battle.lastMsg === text) return;
@@ -403,6 +440,7 @@ function step(battle, dt, onEnd) {
     const enemy = cars[1 - car.team];
     updateDrive(battle, car, enemy, dt);
     updateWeapons(battle, car, enemy, dt);
+    updateCopilot(battle, car, remaining);
     if (car.heal && car.hp > 0) car.hp = Math.min(car.maxHp, car.hp + car.heal * dt);
     if (Math.cos(car.chassis.angle) < -0.25) {
       car.flipTimer += dt;
@@ -415,6 +453,34 @@ function step(battle, dt, onEnd) {
   updateHud(battle, remaining);
 }
 
+// Capacités automatiques des co-pilotes (une fois par combat).
+function updateCopilot(battle, car, remaining) {
+  if (!car.copilot || car.copilotUsed) return;
+  const cp = COPILOTS[car.copilot];
+  if (car.copilot === 'ronron' && car.hp < car.maxHp * 0.35) {
+    car.copilotUsed = true;
+    const healed = Math.round(car.maxHp * 0.3);
+    car.hp = Math.min(car.maxHp, car.hp + healed);
+    const p = car.chassis.position;
+    burst(battle, p.x, p.y - 40, car.z, 16, 0x4de08a, { speed: 2.2, size: 0.13, life: 0.8, grav: -2 });
+    battle.floaters.push({ x: p.x, y: p.y - 60, z: car.z, vy: -70, life: 1, text: '+' + healed, color: '#7dffb0' });
+    showToast(battle, `${cp.name} soigne ${healed} PV !`);
+  } else if (car.copilot === 'zigzag' && battle.time >= 0) {
+    car.copilotUsed = true;
+    const enemy = battle.cars[1 - car.team];
+    const dir = Math.sign(enemy.chassis.position.x - car.chassis.position.x) || 1;
+    Body.setVelocity(car.chassis, { x: car.chassis.velocity.x + dir * 10, y: car.chassis.velocity.y - 1 });
+    const back = worldPoint(car, -car.spec.body.w / 2 - 10, 0);
+    burst(battle, back.x, back.y, car.z, 16, 0x4fd7ff, { speed: 4, size: 0.14, life: 0.6 });
+    showToast(battle, `${cp.name} : méga-boost !`);
+  } else if (car.copilot === 'pixel' && remaining <= 30) {
+    car.copilotUsed = true;
+    car.cdMult = 0.6;
+    showToast(battle, `${cp.name} surcharge les armes !`);
+  }
+  // tigrou se déclenche dans handleMeleePair
+}
+
 function updateDrive(battle, car, enemy, dt) {
   const dx = enemy.chassis.position.x - car.chassis.position.x;
   let dir = Math.sign(dx) || 1;
@@ -423,11 +489,21 @@ function updateDrive(battle, car, enemy, dt) {
   const upright = Math.cos(car.chassis.angle) > 0.1;
   if (!upright) return;
   for (const w of car.wheels) {
-    Body.setAngularVelocity(w.body, dir * 0.42 * w.speed);
+    Body.setAngularVelocity(w.body, dir * 0.42 * w.speed * car.speedMult);
   }
   const v = car.chassis.velocity;
   if (Math.abs(v.x) < 7) {
     Body.setVelocity(car.chassis, { x: v.x + dir * 12 * dt, y: v.y });
+  }
+  // poussière soulevée par les roues
+  car.dustTimer = (car.dustTimer || 0) - dt;
+  if (car.dustTimer <= 0 && Math.abs(v.x) > 2.5) {
+    car.dustTimer = 0.09;
+    const w = car.wheels[Math.random() < 0.5 ? 0 : 1];
+    if (w.body.position.y > GROUND_Y - w.r - 10) {
+      burst(battle, w.body.position.x, GROUND_Y - 4, car.z + 0.3, 1, 0x8a7fae,
+        { speed: 0.9, size: 0.2, life: 0.55, grav: -0.6 });
+    }
   }
   if (car.boost) {
     car.boostTimer -= dt;
@@ -448,20 +524,20 @@ function updateWeapons(battle, car, enemy, dt) {
     const muzzle = worldPoint(car, wp.ox + (wp.w || 20) / 2, wp.oy);
     const target = enemy.chassis.position;
     const dist = Vector.magnitude(Vector.sub(target, muzzle));
-    const dmg = wp.def.dmg * wp.mult * car.dmgMult;
+    const dmg = wp.def.dmg * wp.mult * car.dmgMult * car.rangedMult;
 
     if (wp.kind === 'rocket') {
-      car.weaponTimers[i] = wp.def.cooldown;
+      car.weaponTimers[i] = wp.def.cooldown * car.cdMult;
       fireProjectile(battle, car, muzzle, target, { type: 'rocket', dmg, speed: 15, arc: -3.2, r: 7 });
       sfxShot();
     } else if (wp.kind === 'gun') {
       if (dist > wp.def.range) { car.weaponTimers[i] = 0.1; return; }
-      car.weaponTimers[i] = wp.def.cooldown;
+      car.weaponTimers[i] = wp.def.cooldown * car.cdMult;
       fireProjectile(battle, car, muzzle, { x: target.x, y: target.y - 10 + Math.random() * 20 }, { type: 'bullet', dmg, speed: 22, arc: 0, r: 3 });
       sfxShot();
     } else if (wp.kind === 'laser') {
       if (dist > wp.def.range) { car.weaponTimers[i] = 0.15; return; }
-      car.weaponTimers[i] = wp.def.cooldown;
+      car.weaponTimers[i] = wp.def.cooldown * car.cdMult;
       addBeam(battle, muzzle, target, car.z);
       applyDamage(battle, enemy, dmg, target);
       burst(battle, target.x, target.y, enemy.z, 8, 0x45e8ff, { speed: 3, size: 0.11, life: 0.4 });
@@ -599,6 +675,7 @@ function resize(battle) {
   const canvas = battle.canvas;
   const w = canvas.clientWidth, h = canvas.clientHeight;
   renderer.setSize(w, h, false);
+  battle.composer.setSize(w, h);
   battle.camera.aspect = w / h;
   battle.camera.updateProjectionMatrix();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -682,7 +759,20 @@ function render(battle, t, dt) {
   battle.scene.fog.near = battle.camDist + 9;
   battle.scene.fog.far = battle.camDist + 85;
 
-  renderer.render(battle.scene, camera);
+  // la foule saute et s'agite
+  const crowd = battle.env.userData.crowd;
+  if (crowd) {
+    for (let i = 0; i < crowd.data.length; i++) {
+      const f = crowd.data[i];
+      const excite = battle.finished ? 2.2 : 1;
+      crowd.dummy.position.set(f.x, f.y + Math.max(0, Math.sin(t * f.speed * excite + f.phase)) * f.amp * excite, f.z);
+      crowd.dummy.updateMatrix();
+      crowd.mesh.setMatrixAt(i, crowd.dummy.matrix);
+    }
+    crowd.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  battle.composer.render();
   renderOverlay(battle);
 }
 

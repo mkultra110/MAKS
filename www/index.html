@@ -64,6 +64,20 @@
       <circle cx="12" cy="12" r="1.7" fill="#39405c"/>
       <circle cx="8.5" cy="15.5" r="1.7" fill="#39405c"/><circle cx="15.5" cy="15.5" r="1.7" fill="#39405c"/>
     </symbol>
+    <symbol id="i-medal" viewBox="0 0 24 24">
+      <path d="M8 2h8l-2.6 6h-2.8z" fill="#e8415e"/>
+      <path d="M9 2L6 8.5 8.4 9 11 3z" fill="#4fd7ff"/>
+      <path d="M15 2l3 6.5L15.6 9 13 3z" fill="#4fd7ff"/>
+      <circle cx="12" cy="14.5" r="6.5" fill="#ffc93e"/>
+      <circle cx="12" cy="14.5" r="6.5" fill="none" stroke="#c8860a" stroke-width="1.5"/>
+      <path d="M12 10.8l1.2 2.4 2.6.4-1.9 1.8.45 2.6L12 16.75 9.65 18l.45-2.6-1.9-1.8 2.6-.4z" fill="#c8860a"/>
+    </symbol>
+    <symbol id="i-belt" viewBox="0 0 24 24">
+      <rect x="1" y="8" width="22" height="8" rx="2.5" fill="#7a4a2a"/>
+      <ellipse cx="12" cy="12" rx="6" ry="5" fill="#ffc93e"/>
+      <ellipse cx="12" cy="12" rx="6" ry="5" fill="none" stroke="#c8860a" stroke-width="1.4"/>
+      <path d="M12 9.2l.9 1.8 2 .3-1.45 1.4.35 2L12 13.75 10.2 14.7l.35-2-1.45-1.4 2-.3z" fill="#c8860a"/>
+    </symbol>
     <symbol id="i-back" viewBox="0 0 24 24">
       <path d="M14.5 5.5L8 12l6.5 6.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
@@ -124,7 +138,7 @@
 
     <footer class="actions">
       <button id="btn-quick" class="btn secondary"><svg class="ic"><use href="#i-dice"/></svg> Combat rapide</button>
-      <button id="btn-fight" class="btn primary"><svg class="ic"><use href="#i-sword"/></svg> CHAMPIONNAT</button>
+      <button id="btn-fight" class="btn primary"><svg class="ic"><use href="#i-trophy"/></svg> CHAMPIONNAT</button>
     </footer>
   </section>
 
@@ -142,6 +156,7 @@
         <button id="sheet-close" class="close"><svg class="ic"><use href="#i-back"/></svg></button>
       </div>
       <div id="part-statlist" class="part-statlist"></div>
+      <div id="paint-row" class="paint-row hidden"></div>
       <div class="sheet-actions">
         <button id="btn-equip" class="btn primary">Équiper</button>
         <button id="btn-upgrade" class="btn gold"></button>
@@ -149,6 +164,33 @@
       </div>
     </div>
   </div>
+
+  <!-- FICHE CO-PILOTE -->
+  <div id="copilot-sheet" class="sheet hidden">
+    <div class="sheet-card">
+      <div class="grabber"></div>
+      <div class="sheet-title">Choisis ton co-pilote</div>
+      <div id="copilot-list" class="copilot-list"></div>
+      <button id="copilot-close" class="btn secondary full">Fermer</button>
+    </div>
+  </div>
+
+  <!-- ÉCRAN CHAMPIONNAT : le groupe des 14 joueurs de l'étape -->
+  <section id="screen-roster" class="screen hidden">
+    <header class="roster-head">
+      <button id="btn-roster-back" class="close-round"><svg class="ic"><use href="#i-back"/></svg></button>
+      <div>
+        <div id="roster-title" class="roster-title">Étape 1</div>
+        <div id="roster-sub" class="roster-sub"></div>
+      </div>
+      <div class="chip medal-chip"><svg class="ic"><use href="#i-medal"/></svg><span id="roster-medals">0/8</span></div>
+    </header>
+    <div class="roster-progress"><div id="roster-fill"></div></div>
+    <div id="roster-list" class="roster-list"></div>
+    <footer class="roster-actions">
+      <button id="btn-gauntlet" class="btn gold"><svg class="ic"><use href="#i-belt"/></svg> GRAND COMBAT</button>
+    </footer>
+  </section>
 
   <!-- ÉCRAN VS -->
   <section id="screen-vs" class="screen hidden">
@@ -189,6 +231,7 @@
       </div>
     </div>
     <div id="battle-msg" class="battle-msg hidden"></div>
+    <div id="battle-toast" class="battle-toast hidden"></div>
   </section>
 
   <!-- ÉCRAN RÉSULTAT -->
@@ -197,6 +240,7 @@
     <div class="result-card">
       <div id="result-title" class="result-title"></div>
       <div id="result-sub" class="result-sub"></div>
+      <div id="result-league" class="result-league hidden"></div>
       <div id="result-rewards" class="result-rewards"><svg class="ic big"><use href="#i-coin"/></svg><span id="reward-coins">0</span></div>
       <div id="reward-part" class="reward-part hidden">
         <div class="reward-part-glow"></div>

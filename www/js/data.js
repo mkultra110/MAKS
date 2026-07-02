@@ -105,6 +105,47 @@ export function randomPart(rng, stage) {
   return newPart(kind, type, stars, level);
 }
 
+// ---- Co-pilotes : un passif permanent + une capacité automatique par combat ----
+export const COPILOTS = {
+  ronron: {
+    name: 'Ronron', color: 0xffd9a0, unlock: 0,
+    passive: '+10% PV max', active: 'Soigne 30% des PV quand ils passent sous 35%',
+  },
+  tigrou: {
+    name: 'Tigrou', color: 0xff9a3e, unlock: 1,
+    passive: '+12% dégâts de mêlée', active: 'Frénésie : dégâts ×1,5 pendant 4 s au premier coup porté',
+  },
+  zigzag: {
+    name: 'Zigzag', color: 0xb0b8d0, unlock: 2,
+    passive: '+10% vitesse', active: 'Méga-boost au coup d’envoi',
+  },
+  pixel: {
+    name: 'Pixel', color: 0x8f7bff, unlock: 3,
+    passive: '+12% dégâts à distance', active: 'Surcharge : cadence de tir +40% à 30 s restantes',
+  },
+};
+
+// ---- Ligues (par étape de championnat) ----
+export const LEAGUES = [
+  { name: 'Bois',    min: 1,  color: '#a9825a' },
+  { name: 'Bronze',  min: 3,  color: '#d18a4e' },
+  { name: 'Argent',  min: 6,  color: '#c9d4e8' },
+  { name: 'Or',      min: 10, color: '#ffc93e' },
+  { name: 'Diamant', min: 15, color: '#7ae0ff' },
+  { name: 'Légende', min: 21, color: '#ff5d7a' },
+];
+export function leagueIndex(stage) {
+  let i = 0;
+  LEAGUES.forEach((l, k) => { if (stage >= l.min) i = k; });
+  return i;
+}
+
+// ---- Peintures de châssis ----
+export const PAINTS = [
+  '#3f9bff', '#9a63ff', '#35d97c', '#ff8f31', '#ff5f9e',
+  '#ff4b5e', '#ffc93e', '#4fd7ff', '#e8ecf8', '#39405c',
+];
+
 export const CAT_NAMES = [
   'Griffou', 'Moustache', 'Ronron', 'Félix le Fou', 'Patapouf', 'Tigrou',
   'Mistigri', 'Chaussette', 'Baron Miaou', 'Kitty Krash', 'Sir Poilu',

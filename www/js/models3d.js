@@ -38,9 +38,9 @@ export function roundedBox(w, h, d, r) {
 }
 
 // ---------- tête de chat pilote ----------
-export function catHead(size = 0.28) {
+export function catHead(size = 0.28, color = 0xffd9a0) {
   const g = new THREE.Group();
-  const skin = mat('catSkin', { color: 0xffd9a0, roughness: 0.7 });
+  const skin = mat('catSkin' + color, { color, roughness: 0.7, emissive: color, emissiveIntensity: 0.32 });
   const dark = mat('catDark', { color: 0x2a2438, roughness: 0.6 });
   const head = new THREE.Mesh(new THREE.SphereGeometry(size, 18, 14), skin);
   g.add(head);
@@ -206,7 +206,8 @@ export function createCarModel(spec, { shadows = true } = {}) {
   root.add(bodyGroup);
   const bw = spec.body.w * S, bh = spec.body.h * S;
   const depth = Math.max(1.0, bh * 1.15);
-  const color = BODY_COLORS[spec.loadout?.body?.type] ?? 0x8899aa;
+  const paint = spec.loadout?.body?.paint;
+  const color = paint ? new THREE.Color(paint) : (BODY_COLORS[spec.loadout?.body?.type] ?? 0x8899aa);
 
   const bodyMat = new THREE.MeshStandardMaterial({ color, metalness: 0.4, roughness: 0.42 });
   const chassis = new THREE.Mesh(roundedBox(bw, bh, depth, Math.min(bh * 0.3, 0.24)), bodyMat);
@@ -215,6 +216,90 @@ export function createCarModel(spec, { shadows = true } = {}) {
   const plate = new THREE.Mesh(roundedBox(bw * 0.96, bh * 0.3, depth * 0.9, 0.06), METAL_DARK());
   plate.position.y = -bh / 2 + bh * 0.1;
   bodyGroup.add(plate);
+
+  // phare avant lumineux
+  const headlight = new THREE.Mesh(
+    new THREE.BoxGeometry(0.09, Math.min(bh * 0.22, 0.2), depth * 0.42),
+    mat('headlight', { color: 0xfff6d0, emissive: 0xffe9a0, emissiveIntensity: 1.8, roughness: 0.4 })
+  );
+  headlight.position.set(bw / 2 - 0.01, bh * 0.2, 0);
+  bodyGroup.add(headlight);
+
+  // décalco étoile sur les flancs
+  const decal = starDecalTexture();
+  for (const sz of [-1, 1]) {
+    const face = new THREE.Mesh(
+      new THREE.PlaneGeometry(bh * 0.72, bh * 0.72),
+      new THREE.MeshBasicMaterial({ map: decal, transparent: true, opacity: 0.9 })
+    );
+    face.position.set(bw * 0.24, 0, sz * (depth / 2 + 0.012));
+    face.rotation.y = sz === 1 ? 0 : Math.PI;
+    bodyGroup.add(face);
+  }
+
+  // touches propres à chaque type de châssis
+  const bodyType = spec.loadout?.body?.type;
+  if (bodyType === 'classic' || bodyType === 'pony') {
+    // aileron arrière
+    const wingMat = new THREE.MeshStandardMaterial({ color: 0x2b2f45, metalness: 0.5, roughness: 0.45 });
+    for (const dz of [-depth * 0.3, depth * 0.3]) {
+      const strut = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.24, 0.07), wingMat);
+      strut.position.set(-bw / 2 + 0.16, bh / 2 + 0.1, dz);
+      bodyGroup.add(strut);
+    }
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.06, depth * 0.85), wingMat);
+    wing.position.set(-bw / 2 + 0.14, bh / 2 + 0.24, 0);
+    wing.rotation.z = -0.12;
+    bodyGroup.add(wing);
+  }
+  if (bodyType === 'titan') {
+    // rivets + pots d'échappement
+    const rivetGeo = new THREE.SphereGeometry(0.045, 8, 8);
+    for (let i = 0; i < 4; i++) {
+      for (const sz of [-1, 1]) {
+        const rivet = new THREE.Mesh(rivetGeo, METAL());
+        rivet.position.set(-bw * 0.38 + i * bw * 0.25, bh / 2 - 0.05, sz * (depth / 2 - 0.02));
+        bodyGroup.add(rivet);
+      }
+    }
+    for (const dz of [-depth * 0.28, depth * 0.28]) {
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.42, 8), METAL_DARK());
+      pipe.position.set(-bw / 2 + 0.14, bh / 2 + 0.2, dz);
+      bodyGroup.add(pipe);
+    }
+  }
+  if (bodyType === 'surfer') {
+    // pare-brise incliné très bas
+    const shield = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 0.05, depth * 0.7),
+      new THREE.MeshStandardMaterial({ color: 0x9fd8ff, metalness: 0.2, roughness: 0.1, transparent: true, opacity: 0.55 })
+    );
+    shield.position.set(bw * 0.28, bh / 2 + 0.14, 0);
+    shield.rotation.z = 0.5;
+    bodyGroup.add(shield);
+  }
+  if (bodyType === 'whale') {
+    // nageoire dorsale
+    const finShape = new THREE.Shape();
+    finShape.moveTo(0, 0); finShape.quadraticCurveTo(-0.3, 0.5, -0.55, 0.55);
+    finShape.quadraticCurveTo(-0.28, 0.2, -0.5, 0); finShape.closePath();
+    const fin = new THREE.Mesh(
+      new THREE.ExtrudeGeometry(finShape, { depth: 0.08, bevelEnabled: false }),
+      bodyMat
+    );
+    fin.position.set(-bw * 0.2, bh / 2, -0.04);
+    bodyGroup.add(fin);
+  }
+  if (bodyType === 'pony') {
+    // antenne à boule
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.5, 6), METAL_DARK());
+    rod.position.set(-bw / 2 + 0.1, bh / 2 + 0.25, depth * 0.3);
+    bodyGroup.add(rod);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8),
+      mat('antennaBall', { color: 0xff5f9e, emissive: 0xff5f9e, emissiveIntensity: 0.8 }));
+    ball.position.set(-bw / 2 + 0.1, bh / 2 + 0.52, depth * 0.3);
+    bodyGroup.add(ball);
+  }
 
   // cabine vitrée + chat
   const cabR = Math.min(bh * 0.62, 0.62);
@@ -362,6 +447,44 @@ export function createPartModel(part) {
   return g;
 }
 
+// ---------- textures utilitaires ----------
+let STAR_TEX = null;
+function starDecalTexture() {
+  if (STAR_TEX) return STAR_TEX;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const x = c.getContext('2d');
+  x.translate(64, 64);
+  x.fillStyle = 'rgba(255,255,255,.92)';
+  x.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+    const a2 = a + Math.PI / 5;
+    x.lineTo(Math.cos(a) * 46, Math.sin(a) * 46);
+    x.lineTo(Math.cos(a2) * 20, Math.sin(a2) * 20);
+  }
+  x.closePath(); x.fill();
+  STAR_TEX = new THREE.CanvasTexture(c);
+  STAR_TEX.colorSpace = THREE.SRGBColorSpace;
+  return STAR_TEX;
+}
+
+function bannerTexture(text, bg, fg) {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 128;
+  const x = c.getContext('2d');
+  x.fillStyle = bg; x.fillRect(0, 0, 512, 128);
+  x.strokeStyle = 'rgba(255,255,255,.35)'; x.lineWidth = 8;
+  x.strokeRect(6, 6, 500, 116);
+  x.fillStyle = fg;
+  x.font = '800 64px "Baloo 2", sans-serif';
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(text, 256, 70);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 // ---------- arène ----------
 function groundTexture() {
   const c = document.createElement('canvas');
@@ -435,6 +558,64 @@ export function createArena(scene, arenaW) {
     line.position.set(0, 0.01, dz);
     env.add(line);
   }
+
+  // logo central sur la piste
+  const logo = new THREE.Mesh(
+    new THREE.CircleGeometry(2.2, 40),
+    new THREE.MeshBasicMaterial({ map: bannerTexture('MAKS', 'rgba(0,0,0,0)', 'rgba(255,201,62,.28)'), transparent: true })
+  );
+  logo.rotation.x = -Math.PI / 2;
+  logo.position.set(0, 0.012, 0);
+  env.add(logo);
+
+  // panneaux publicitaires le long de la piste
+  const ADS = [
+    ['MIAOU-COLA', '#7a1f3a', '#ffd9e0'],
+    ['MAKS ARENA', '#1f2a6e', '#ffd23e'],
+    ['GRIFFE & FILS', '#1f5a3a', '#d0ffe0'],
+    ['CAT-TURBO', '#5a2a1f', '#ffe0c0'],
+    ['RONRON GP', '#3a1f6e', '#e0d0ff'],
+  ];
+  for (let i = 0; i < ADS.length; i++) {
+    const [text, bg, fg] = ADS[i];
+    const panel = new THREE.Mesh(
+      new THREE.PlaneGeometry(5.4, 1.35),
+      new THREE.MeshBasicMaterial({ map: bannerTexture(text, bg, fg) })
+    );
+    panel.position.set((i - (ADS.length - 1) / 2) * 6.2, 0.72, -6.4);
+    env.add(panel);
+  }
+
+  // tribunes + foule animée
+  const standMat = new THREE.MeshStandardMaterial({ color: 0x232145, roughness: 0.9 });
+  for (let tier = 0; tier < 3; tier++) {
+    const stand = new THREE.Mesh(new THREE.BoxGeometry(W + 14, 1.1, 2.2), standMat);
+    stand.position.set(0, 1.5 + tier * 1.15, -8.4 - tier * 2.1);
+    env.add(stand);
+  }
+  const fanGeo = new THREE.SphereGeometry(0.26, 8, 7);
+  const fanMat = new THREE.MeshStandardMaterial({ roughness: 0.8 });
+  const N_FANS = 130;
+  const crowd = new THREE.InstancedMesh(fanGeo, fanMat, N_FANS);
+  const fanData = [];
+  const color = new THREE.Color();
+  const dummy = new THREE.Object3D();
+  let cSeed = 13;
+  const crnd = () => { cSeed = (cSeed * 16807) % 2147483647; return cSeed / 2147483647; };
+  for (let i = 0; i < N_FANS; i++) {
+    const tier = Math.floor(crnd() * 3);
+    const fx = (crnd() - 0.5) * (W + 12);
+    const fy = 2.25 + tier * 1.15;
+    const fz = -8.4 - tier * 2.1 + (crnd() - 0.5) * 1.2;
+    fanData.push({ x: fx, y: fy, z: fz, phase: crnd() * Math.PI * 2, speed: 2 + crnd() * 4, amp: 0.1 + crnd() * 0.22 });
+    dummy.position.set(fx, fy, fz);
+    dummy.updateMatrix();
+    crowd.setMatrixAt(i, dummy.matrix);
+    crowd.setColorAt(i, color.setHSL(crnd(), 0.65, 0.6));
+  }
+  crowd.instanceColor.needsUpdate = true;
+  env.add(crowd);
+  env.userData.crowd = { mesh: crowd, data: fanData, dummy };
 
   // gratte-ciels lointains (silhouettes)
   const bMat = new THREE.MeshStandardMaterial({ color: 0x191736, roughness: 1 });
