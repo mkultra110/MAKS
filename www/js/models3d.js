@@ -7,7 +7,10 @@ export const S = 0.02; // 50 px physiques = 1 unité 3D
 // ---------- matériaux partagés ----------
 const MATS = {};
 export function mat(key, opts) {
-  if (!MATS[key]) MATS[key] = new THREE.MeshStandardMaterial(opts);
+  if (!MATS[key]) {
+    MATS[key] = new THREE.MeshStandardMaterial(opts);
+    MATS[key].userData.shared = true; // jamais disposé (cache global)
+  }
   return MATS[key];
 }
 const METAL = () => mat('metal', { color: 0xd8dce8, metalness: 0.85, roughness: 0.32 });
@@ -33,6 +36,7 @@ export function roundedBox(w, h, d, r) {
     bevelSize: bevel, bevelSegments: 2, curveSegments: 6,
   });
   geo.translate(0, 0, -(d - bevel * 2) / 2);
+  geo.userData.shared = true; // cache global, jamais disposé
   GEO_CACHE[key] = geo;
   return geo;
 }
@@ -234,6 +238,7 @@ export function createCarModel(spec, { shadows = true } = {}) {
     );
     face.position.set(bw * 0.24, 0, sz * (depth / 2 + 0.012));
     face.rotation.y = sz === 1 ? 0 : Math.PI;
+    face.userData.noShadow = true;
     bodyGroup.add(face);
   }
 
@@ -376,9 +381,16 @@ export function createCarModel(spec, { shadows = true } = {}) {
     return pair;
   });
 
-  if (shadows) root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
+  // ombres : on exclut les petits détails marqués noShadow (coût inutile)
+  headlight.userData.noShadow = true;
+  for (const f of flames) f.userData.noShadow = true;
+  if (shadows) {
+    root.traverse(o => {
+      if (o.isMesh && !o.userData.noShadow) { o.castShadow = true; o.receiveShadow = false; }
+    });
+  }
 
-  root.userData = { spec, bodyGroup, wheelMeshes, spins, flames };
+  root.userData = { spec, bodyGroup, wheelMeshes, spins, flames, bodyMat };
   return root;
 }
 
@@ -466,6 +478,7 @@ function starDecalTexture() {
   x.closePath(); x.fill();
   STAR_TEX = new THREE.CanvasTexture(c);
   STAR_TEX.colorSpace = THREE.SRGBColorSpace;
+  STAR_TEX.userData.shared = true; // texture globale, jamais disposée
   return STAR_TEX;
 }
 

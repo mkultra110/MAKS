@@ -31,13 +31,33 @@ export function load() {
     try {
       const s = JSON.parse(raw);
       Object.assign(state, s);
+      // normalisation défensive : une sauvegarde corrompue ne doit jamais bloquer le boot
       if (state.copilot === undefined) state.copilot = 'ronron';
       if (state.lastLeague === undefined) state.lastLeague = leagueIndex(state.stage);
       if (!Array.isArray(state.medals)) state.medals = [];
+      if (!Number.isFinite(state.coins) || state.coins < 0) state.coins = 0;
+      if (!Number.isFinite(state.stage) || state.stage < 1) state.stage = 1;
+      if (!Array.isArray(state.inventory)) throw new Error('inventory');
+      state.inventory = state.inventory.filter(p =>
+        p && typeof p === 'object' && p.id && KIND_DEFS_OK(p));
+      const e = state.equipped;
+      if (!e || typeof e !== 'object') throw new Error('equipped');
+      const has = id => state.inventory.some(p => p.id === id);
+      e.body = has(e.body) ? e.body : null;
+      e.wheels = Array.isArray(e.wheels) ? e.wheels.map(id => (has(id) ? id : null)).slice(0, 2) : [null, null];
+      while (e.wheels.length < 2) e.wheels.push(null);
+      e.weapons = Array.isArray(e.weapons) ? e.weapons.filter(has) : [];
+      e.gadgets = Array.isArray(e.gadgets) ? e.gadgets.filter(has) : [];
+      if (!state.inventory.length) throw new Error('empty');
       return;
     } catch (e) {}
   }
   firstBoot();
+}
+
+function KIND_DEFS_OK(p) {
+  const defs = { body: BODIES, wheel: WHEELS, weapon: WEAPONS, gadget: GADGETS }[p.kind];
+  return !!(defs && defs[p.type]) && Number.isFinite(p.stars) && Number.isFinite(p.level);
 }
 
 function firstBoot() {
@@ -103,28 +123,36 @@ export function loadoutValid(lo) {
 }
 
 // ---- Équiper une pièce (échange automatique si nécessaire) ----
+// Retourne la liste des ids éjectés (échange ou slots en moins), pour l'UI.
 export function equip(part) {
   const e = state.equipped;
+  const ejected = [];
   if (part.kind === 'body') {
+    const before = [...e.weapons, ...e.gadgets];
     e.body = part.id;
     trimToSlots();
+    for (const id of before) {
+      if (!e.weapons.includes(id) && !e.gadgets.includes(id)) ejected.push(id);
+    }
   } else if (part.kind === 'wheel') {
+    if (e.wheels.includes(part.id)) return ejected;
     const idx = e.wheels[0] === null ? 0 : (e.wheels[1] === null ? 1 : 0);
-    if (e.wheels.includes(part.id)) return;
+    if (e.wheels[idx]) ejected.push(e.wheels[idx]);
     e.wheels[idx] = part.id;
   } else if (part.kind === 'weapon') {
-    if (e.weapons.includes(part.id)) return;
+    if (e.weapons.includes(part.id)) return ejected;
     const max = e.body ? partDef(getPart(e.body)).weaponSlots : 1;
-    if (e.weapons.length >= max) e.weapons.shift();
+    if (e.weapons.length >= max) ejected.push(e.weapons.shift());
     e.weapons.push(part.id);
   } else if (part.kind === 'gadget') {
-    if (e.gadgets.includes(part.id)) return;
+    if (e.gadgets.includes(part.id)) return ejected;
     const max = e.body ? partDef(getPart(e.body)).gadgetSlots : 0;
-    if (max === 0) return;
-    if (e.gadgets.length >= max) e.gadgets.shift();
+    if (max === 0) return ejected;
+    if (e.gadgets.length >= max) ejected.push(e.gadgets.shift());
     e.gadgets.push(part.id);
   }
   save();
+  return ejected;
 }
 
 export function unequip(id) {
@@ -137,19 +165,22 @@ export function unequip(id) {
 }
 
 // Coupe les armes/gadgets excédentaires après changement de corps.
+// NB : slice(-0) renverrait le tableau ENTIER, d'où les gardes > 0.
 function trimToSlots() {
   const e = state.equipped;
   const b = getPart(e.body);
   if (!b) return;
   const d = partDef(b);
-  e.weapons = e.weapons.slice(-d.weaponSlots);
-  e.gadgets = e.gadgets.slice(-d.gadgetSlots);
+  e.weapons = d.weaponSlots > 0 ? e.weapons.slice(-d.weaponSlots) : [];
+  e.gadgets = d.gadgetSlots > 0 ? e.gadgets.slice(-d.gadgetSlots) : [];
 }
 
 export function removePart(part) {
   unequip(part.id);
   if (state.equipped.body === part.id) state.equipped.body = null;
-  state.inventory = state.inventory.filter(p => p.id !== part.id);
+  // ne retire qu'UNE occurrence (défense contre d'éventuels ids dupliqués)
+  const i = state.inventory.findIndex(p => p.id === part.id);
+  if (i >= 0) state.inventory.splice(i, 1);
   save();
 }
 
@@ -161,8 +192,8 @@ const AVATAR_COLORS = [0xffd9a0, 0xff9a3e, 0xb0b8d0, 0x8f7bff, 0xf4a9c8, 0x9adf9
 export function makeOpponent(stage, round, quick = false) {
   const seed = quick ? (Date.now() & 0x7fffffff) : (stage * 977 + round * 131 + 7);
   const rng = seededRng(seed);
-  const power = 1 + (stage - 1) * 0.22 + round * 0.045;
-  const mkLevel = () => Math.max(1, Math.round(1 + (stage - 1) * 0.9 + rng() * 2 - (quick ? 1 : 0)));
+  const power = 1 + (stage - 1) * 0.13 + round * 0.03;
+  const mkLevel = () => Math.max(1, Math.round(1 + (stage - 1) * 0.6 + rng() * 2 - (quick ? 1 : 0)));
 
   const bodyType = pick(rng, Object.keys(BODIES));
   const body = newPart('body', bodyType, rollStars(rng, stage), mkLevel());
@@ -198,7 +229,10 @@ export function makeOpponent(stage, round, quick = false) {
     avatar: AVATAR_COLORS[Math.floor(rng() * AVATAR_COLORS.length)],
     idx: quick ? null : round,
     loadout: lo,
-    statBoost: Math.max(0.75, power * 0.72), // multiplicateur global IA
+    // anti « double-dip » : les PV scalent linéairement, les dégâts en racine —
+    // sinon la puissance effective (PV × dégâts) explose en power².
+    statBoost: Math.max(0.7, power * 0.78),
+    dmgBoost: Math.max(0.75, Math.sqrt(power * 0.78)),
   };
 }
 
@@ -224,19 +258,31 @@ export function copilotMods(id) {
 // opponentIdx : place de l'adversaire battu dans le groupe (championnat), null en combat rapide.
 export function winRewards(quick, opponentIdx = null) {
   const stage = state.stage;
-  let coins = Math.round((quick ? 12 : 20) + stage * (quick ? 5 : 9) + Math.random() * 10);
-  let part = null, leagueUp = null, medal = false, promoted = false;
+  let coins = quick
+    ? Math.round(12 + stage * 5 + Math.random() * 10)
+    : Math.round(25 + stage * 14 + Math.random() * 10);
+  let part = null, extraParts = [], leagueUp = null, medal = false, promoted = false;
   if (!quick) {
     state.totalWins++;
     if (opponentIdx !== null && !state.medals.includes(opponentIdx)) {
       state.medals.push(opponentIdx);
       medal = true;
+      // chaque médaille rapporte une pièce
+      part = randomPart(seededRng((Date.now() & 0x7fffffff) ^ state.totalWins), stage);
+      state.inventory.push(part);
     }
     if (state.medals.length >= MEDALS_TO_ADVANCE) {
       state.stage++;
       state.medals = [];
       promoted = true;
-      coins += 25 + stage * 6; // prime de promotion
+      coins += 50 + stage * 15; // prime de promotion
+      // 2 pièces bonus avec plancher d'étoiles qui monte avec les étapes
+      const floor = Math.min(5, 1 + Math.floor(stage / 3));
+      for (let i = 0; i < 2; i++) {
+        const p = randomPart(seededRng((Date.now() & 0x7fffffff) ^ (state.totalWins * 31 + i)), stage, floor);
+        state.inventory.push(p);
+        extraParts.push(p);
+      }
       const li = leagueIndex(state.stage);
       if (li > state.lastLeague) {
         state.lastLeague = li;
@@ -244,13 +290,16 @@ export function winRewards(quick, opponentIdx = null) {
         coins += leagueUp.bonus;
       }
     }
-    // une pièce toutes les 2 victoires de championnat
-    if (state.totalWins % 2 === 0) {
-      part = randomPart(seededRng((Date.now() & 0x7fffffff) ^ state.totalWins), stage);
-      state.inventory.push(part);
-    }
   }
   state.coins += coins;
   save();
-  return { coins, part, leagueUp, medal, promoted };
+  return { coins, part, extraParts, leagueUp, medal, promoted };
+}
+
+// Lot de consolation en cas de défaite.
+export function defeatReward(quick) {
+  const coins = quick ? 5 : Math.round((25 + 9 * state.stage) * 0.3);
+  state.coins += coins;
+  save();
+  return coins;
 }

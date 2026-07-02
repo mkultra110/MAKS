@@ -2,14 +2,33 @@
 import * as THREE from 'three';
 import { skyTexture } from './models3d.js';
 
-export function createRenderer(canvas, { shadows = true, alpha = false } = {}) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha });
+export function createRenderer(canvas, { shadows = true, alpha = false, antialias = true } = {}) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias, alpha });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = shadows;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.12;
   return renderer;
+}
+
+// Libère géométries/matériaux (et textures si demandé) d'un sous-arbre,
+// en épargnant les ressources marquées `userData.shared` (caches globaux).
+export function disposeModel(root, { textures = false } = {}) {
+  root.traverse(o => {
+    if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose?.();
+    const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+    for (const m of mats) {
+      if (m.userData?.shared) continue;
+      if (textures) {
+        for (const key of ['map', 'emissiveMap', 'normalMap', 'roughnessMap']) {
+          const tex = m[key];
+          if (tex && !tex.userData?.shared) tex.dispose?.();
+        }
+      }
+      m.dispose?.();
+    }
+  });
 }
 
 export function sizeToCanvas(renderer, camera) {

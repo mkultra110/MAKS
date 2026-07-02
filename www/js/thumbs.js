@@ -1,6 +1,6 @@
 // Vignettes 3D (pièces et véhicules) rendues hors-écran, avec cache.
 import * as THREE from 'three';
-import { createRenderer, studioLights } from './render3d.js';
+import { createRenderer, studioLights, disposeModel } from './render3d.js';
 import { createPartModel, createCarModel, poseCarStatic, catHead } from './models3d.js';
 import { buildCarSpec } from './car.js';
 import { COPILOTS } from './data.js';
@@ -42,6 +42,7 @@ function snapshot(model, fit, { w = 320, h = 240, podiumY = null, lookY = null }
   camera.lookAt(0, lookY ?? fit * 0.1, 0);
   renderer.render(scene, camera);
   const url = renderer.domElement.toDataURL('image/png');
+  disposeModel(holder); // le résultat est caché en dataURL, le modèle peut partir
   holder.clear();
   return url;
 }

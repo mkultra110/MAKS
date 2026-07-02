@@ -1,28 +1,30 @@
 // Catalogue des pièces, formules d'équilibrage et générateurs aléatoires.
 
 export const BODIES = {
-  classic: { name: 'Classique', hp: 130, energy: 6, weaponSlots: 2, gadgetSlots: 1, w: 150, h: 54, color: '#45a8ff' },
+  classic: { name: 'Classique', hp: 140, energy: 6, weaponSlots: 2, gadgetSlots: 1, w: 150, h: 54, color: '#45a8ff' },
   titan:   { name: 'Titan',     hp: 210, energy: 5, weaponSlots: 1, gadgetSlots: 1, w: 128, h: 80, color: '#b06cff' },
-  surfer:  { name: 'Surfeur',   hp: 155, energy: 7, weaponSlots: 2, gadgetSlots: 0, w: 190, h: 42, color: '#3ee07a' },
-  whale:   { name: 'Baleine',   hp: 270, energy: 4, weaponSlots: 1, gadgetSlots: 1, w: 172, h: 66, color: '#ff9a3e' },
-  pony:    { name: 'Poney',     hp: 95,  energy: 8, weaponSlots: 2, gadgetSlots: 1, w: 118, h: 46, color: '#ff6c9c' },
+  surfer:  { name: 'Surfeur',   hp: 145, energy: 6, weaponSlots: 2, gadgetSlots: 0, w: 190, h: 42, color: '#3ee07a' },
+  whale:   { name: 'Baleine',   hp: 270, energy: 5, weaponSlots: 1, gadgetSlots: 1, w: 172, h: 66, color: '#ff9a3e' },
+  pony:    { name: 'Poney',     hp: 125, energy: 8, weaponSlots: 2, gadgetSlots: 1, w: 118, h: 46, color: '#ff6c9c' },
 };
 
 export const WHEELS = {
   basic:  { name: 'Roue',         hp: 22, r: 21, speed: 1.0  },
   spiked: { name: 'Roue cloutée', hp: 38, r: 23, speed: 0.9  },
-  big:    { name: 'Grande roue',  hp: 28, r: 29, speed: 1.15 },
-  tiny:   { name: 'Roulette',     hp: 13, r: 15, speed: 1.28 },
+  big:    { name: 'Grande roue',  hp: 28, r: 29, speed: 1.05 },
+  tiny:   { name: 'Roulette',     hp: 16, r: 15, speed: 1.28 },
 };
 
+// Cible d'équilibrage : mêlée ≈ 11-12 dégâts/s par point d'énergie,
+// distance ≈ 4.8-5.4 (compensée par la portée).
 export const WEAPONS = {
   blade:  { name: 'Lame',        kind: 'melee',  energy: 2, dps: 24, w: 64, h: 12 },
   saw:    { name: 'Scie',        kind: 'melee',  energy: 3, dps: 34, r: 26 },
-  drill:  { name: 'Perceuse',    kind: 'melee',  energy: 3, dps: 28, w: 58, h: 20, push: true },
-  stinger:{ name: 'Dard',        kind: 'melee',  energy: 2, dps: 19, w: 52, h: 10, up: true },
-  rocket: { name: 'Roquettes',   kind: 'rocket', energy: 3, dmg: 30, cooldown: 2.3, w: 44, h: 18 },
-  laser:  { name: 'Laser',       kind: 'laser',  energy: 4, dmg: 17, cooldown: 1.35, range: 560, w: 36, h: 18 },
-  minigun:{ name: 'Mitrailleuse',kind: 'gun',    energy: 3, dmg: 6, cooldown: 0.28, range: 520, w: 42, h: 16 },
+  drill:  { name: 'Perceuse',    kind: 'melee',  energy: 3, dps: 32, w: 58, h: 20, push: true },
+  stinger:{ name: 'Dard',        kind: 'melee',  energy: 2, dps: 22, w: 52, h: 10, up: true },
+  rocket: { name: 'Roquettes',   kind: 'rocket', energy: 3, dmg: 36, cooldown: 2.3, w: 44, h: 18 },
+  laser:  { name: 'Laser',       kind: 'laser',  energy: 4, dmg: 26, cooldown: 1.35, range: 560, w: 36, h: 18 },
+  minigun:{ name: 'Mitrailleuse',kind: 'gun',    energy: 3, dmg: 4.5, cooldown: 0.28, range: 520, w: 42, h: 16 },
 };
 
 export const GADGETS = {
@@ -41,10 +43,15 @@ export function partMult(part) {
 }
 export function maxLevel(part) { return 1 + 5 * part.stars; } // 1★=6 … 5★=26
 export function upgradeCost(part) {
-  return Math.round(15 * Math.pow(part.level, 1.5) * (0.6 + 0.4 * part.stars));
+  return Math.round(12 * Math.pow(part.level, 1.3) * (0.6 + 0.4 * part.stars));
 }
+// Recyclage : base par étoile + 50% des améliorations investies.
 export function recycleValue(part) {
-  return Math.round(12 * part.stars + 4 * (part.level - 1));
+  let invested = 0;
+  for (let l = 1; l < part.level; l++) {
+    invested += Math.round(12 * Math.pow(l, 1.3) * (0.6 + 0.4 * part.stars));
+  }
+  return Math.round(25 * part.stars + invested * 0.5);
 }
 
 export function partDef(part) { return KIND_DEFS[part.kind][part.type]; }
@@ -83,9 +90,11 @@ export function seededRng(seed) {
 }
 export function pick(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
 
-let uid = Date.now() % 100000;
+// Ids uniques entre sessions (l'inventaire persiste en localStorage).
+let uid = 0;
 export function newPart(kind, type, stars = 1, level = 1) {
-  return { id: 'p' + (uid++) + '_' + Math.floor(Math.random() * 9999), kind, type, stars, level };
+  const id = 'p' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10) + '_' + (uid++);
+  return { id, kind, type, stars, level };
 }
 
 // Étoiles aléatoires pondérées par l'étape du championnat.
@@ -97,10 +106,10 @@ export function rollStars(rng, stage) {
   return 1;
 }
 
-export function randomPart(rng, stage) {
+export function randomPart(rng, stage, minStars = 1) {
   const kind = pick(rng, ['weapon', 'weapon', 'weapon', 'body', 'wheel', 'wheel', 'gadget']);
   const type = pick(rng, Object.keys(KIND_DEFS[kind]));
-  const stars = rollStars(rng, stage);
+  const stars = Math.max(minStars, rollStars(rng, stage));
   const level = 1 + Math.floor(rng() * Math.min(stage, 6));
   return newPart(kind, type, stars, level);
 }

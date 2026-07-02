@@ -1,15 +1,28 @@
 // Écran garage : aperçu 3D du véhicule, emplacements, inventaire, fiche pièce.
 import * as THREE from 'three';
 import { KIND_LABEL, partDef, partStats, maxLevel, upgradeCost, recycleValue, COPILOTS, PAINTS, LEAGUES, leagueIndex } from './data.js';
-import { state, save, isEquipped, buildLoadout, computeCarStats, equip, unequip, removePart, MEDALS_TO_ADVANCE } from './state.js';
+import { state, save, isEquipped, buildLoadout, computeCarStats, loadoutValid, equip, unequip, removePart, getPart, MEDALS_TO_ADVANCE } from './state.js';
 import { buildCarSpec } from './car.js';
-import { createRenderer, createStudioScene } from './render3d.js';
+import { createRenderer, createStudioScene, disposeModel } from './render3d.js';
 import { createCarModel, poseCarStatic } from './models3d.js';
 import { partThumb, copilotThumb } from './thumbs.js';
 import { sfxClick } from './sfx.js';
 
 let currentTab = 'body';
 let sheetPart = null;
+let recycleArmed = false;
+let recycleTimer = 0;
+let toastTimer = 0;
+
+// Petit message transitoire dans le garage.
+function garageToast(text) {
+  const el = document.getElementById('garage-toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 2200);
+}
 
 // ---- aperçu 3D (plateau tournant) ----
 let pv = null; // { renderer, scene, camera, holder, raf, running }
@@ -62,6 +75,7 @@ export function stopPreview() {
 
 function refreshPreviewModel(lo) {
   ensurePreview();
+  disposeModel(pv.holder); // libère l'ancien modèle avant de le remplacer
   pv.holder.clear();
   if (!lo.body) return;
   const spec = buildCarSpec(lo);
@@ -89,7 +103,13 @@ export function initGarage() {
     if (!sheetPart) return;
     sfxClick();
     if (isEquipped(sheetPart.id) && sheetPart.kind !== 'body') unequip(sheetPart.id);
-    else equip(sheetPart);
+    else {
+      const ejected = equip(sheetPart);
+      if (ejected && ejected.length) {
+        const names = ejected.map(id => getPart(id) ? partDef(getPart(id)).name : '').filter(Boolean);
+        if (names.length) garageToast(`${names.join(', ')} retirée${names.length > 1 ? 's' : ''} (plus de place)`);
+      }
+    }
     closeSheet();
     renderGarage();
   });
@@ -104,9 +124,23 @@ export function initGarage() {
     openSheet(sheetPart);
     renderGarage();
   });
-  document.getElementById('btn-recycle').addEventListener('click', () => {
+  // recyclage en deux temps : le premier tap arme, le second exécute
+  const btnRec = document.getElementById('btn-recycle');
+  btnRec.addEventListener('click', () => {
     if (!sheetPart) return;
     sfxClick();
+    if (!recycleArmed) {
+      recycleArmed = true;
+      btnRec.textContent = 'Confirmer ?';
+      clearTimeout(recycleTimer);
+      recycleTimer = setTimeout(() => {
+        recycleArmed = false;
+        if (sheetPart) btnRec.textContent = `Recycler · +${recycleValue(sheetPart)}`;
+      }, 3000);
+      return;
+    }
+    clearTimeout(recycleTimer);
+    recycleArmed = false;
     state.coins += recycleValue(sheetPart);
     removePart(sheetPart);
     closeSheet();
@@ -181,9 +215,21 @@ export function renderGarage() {
   fill.style.width = Math.min(100, stats.used / Math.max(1, stats.capacity) * 100) + '%';
   const over = stats.used > stats.capacity;
   fill.classList.toggle('over', over);
-  document.getElementById('energy-warning').classList.toggle('hidden', !over);
-  document.getElementById('btn-fight').disabled = over || !lo.body || lo.weapons.length === 0;
-  document.getElementById('btn-quick').disabled = over || !lo.body || lo.weapons.length === 0;
+  const warning = document.getElementById('energy-warning');
+  const valid = loadoutValid(lo);
+  if (over) {
+    warning.textContent = 'Énergie dépassée — retire une arme ou un gadget !';
+    warning.classList.remove('hidden');
+  } else if (!valid) {
+    warning.textContent = !lo.body ? 'Équipe un corps !'
+      : lo.wheels.length < 2 ? 'Il manque une roue !'
+      : 'Équipe au moins une arme !';
+    warning.classList.remove('hidden');
+  } else {
+    warning.classList.add('hidden');
+  }
+  document.getElementById('btn-fight').disabled = !valid;
+  document.getElementById('btn-quick').disabled = !valid;
 
   refreshPreviewModel(lo);
   startPreview();
@@ -327,6 +373,8 @@ function openSheet(part) {
     btnUp.textContent = `Améliorer · ${cost}`;
     btnUp.disabled = state.coins < cost;
   }
+  recycleArmed = false;
+  clearTimeout(recycleTimer);
   const btnRec = document.getElementById('btn-recycle');
   btnRec.textContent = `Recycler · +${recycleValue(part)}`;
   btnRec.disabled = equipped;

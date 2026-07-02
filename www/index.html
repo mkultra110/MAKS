@@ -124,6 +124,7 @@
         <span id="stat-energy">0/0</span>
       </div>
       <div id="energy-warning" class="energy-warning hidden">Énergie dépassée !</div>
+      <div id="garage-toast" class="garage-toast hidden"></div>
     </div>
 
     <div class="slots-row" id="slots-row"></div>
@@ -189,6 +190,7 @@
     <div id="roster-list" class="roster-list"></div>
     <footer class="roster-actions">
       <button id="btn-gauntlet" class="btn gold"><svg class="ic"><use href="#i-belt"/></svg> GRAND COMBAT</button>
+      <div class="gauntlet-rules">Enchaîne les adversaires restants sans pause — une défaite met fin à la série !</div>
     </footer>
   </section>
 
@@ -240,6 +242,7 @@
     <div class="result-card">
       <div id="result-title" class="result-title"></div>
       <div id="result-sub" class="result-sub"></div>
+      <div id="result-progress" class="result-progress hidden"></div>
       <div id="result-league" class="result-league hidden"></div>
       <div id="result-rewards" class="result-rewards"><svg class="ic big"><use href="#i-coin"/></svg><span id="reward-coins">0</span></div>
       <div id="reward-part" class="reward-part hidden">
@@ -248,9 +251,13 @@
         <img id="reward-img" alt="">
         <div id="reward-name"></div>
       </div>
+      <button id="btn-next" class="btn secondary hidden"></button>
       <button id="btn-result-ok" class="btn xl primary">Continuer</button>
     </div>
   </section>
+
+  <!-- Bannière du Grand Combat entre deux combats -->
+  <div id="gauntlet-banner" class="gauntlet-banner hidden"></div>
 
 </div>
 <script src="js/lib/matter.min.js"></script>

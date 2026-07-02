@@ -5,7 +5,8 @@ import { copilotMods } from './state.js';
 import { COPILOTS } from './data.js';
 import { createRenderer } from './render3d.js';
 import { createCarModel, createArena, createDeathWall, skyTexture, S } from './models3d.js';
-import { sfxHit, sfxBoom, sfxLaser, sfxShot } from './sfx.js';
+import { sfxHit, sfxBoom, sfxLaser, sfxShot, sfxCount, sfxGo, sfxSiren } from './sfx.js';
+import { disposeModel } from './render3d.js';
 import { EffectComposer } from './lib/postprocessing/EffectComposer.js';
 import { RenderPass } from './lib/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from './lib/postprocessing/UnrealBloomPass.js';
@@ -28,7 +29,7 @@ const to3y = y => (GROUND_Y - y) * S;
 
 // ---------- construction d'un véhicule physique ----------
 function makeCar(engine, lo, opts) {
-  const { x, dir, team, name, statBoost = 1, copilot = null } = opts;
+  const { x, dir, team, name, statBoost = 1, dmgBoost = null, copilot = null } = opts;
   const mods = copilotMods(copilot);
   const spec = buildCarSpec(lo);
   const group = Body.nextGroup(true);
@@ -72,7 +73,8 @@ function makeCar(engine, lo, opts) {
     hp: maxHp, maxHp,
     heal: spec.stats.heal,
     boost: spec.stats.hasBooster, backpedal: spec.stats.hasBackpedal,
-    dmgMult: statBoost,
+    dmgMult: dmgBoost ?? statBoost,
+    hitFlash: 0,
     copilot,
     meleeMult: mods.melee, rangedMult: mods.ranged, speedMult: mods.speed,
     cdMult: 1, frenzyUntil: -1, copilotUsed: false,
@@ -107,7 +109,7 @@ function buildScene(battle) {
   const key = new THREE.DirectionalLight(0xfff2dd, 2.2);
   key.position.set(6, 14, 9);
   key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.mapSize.set(1024, 1024);
   key.shadow.camera.left = -16; key.shadow.camera.right = 16;
   key.shadow.camera.top = 12; key.shadow.camera.bottom = -6;
   key.shadow.bias = -0.0015;
@@ -143,15 +145,19 @@ function buildScene(battle) {
   camera.position.set(0, 2.6, 12);
   battle.scene = scene;
   battle.camera = camera;
-  battle.camX = 0; battle.camDist = 12;
+  // départ large : le dolly-in pendant le compte à rebours sert d'intro
+  battle.camX = 0; battle.camDist = 30;
 
   // post-processing : bloom léger (lasers, phares, explosions, néons)
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.65, 0.82);
   composer.addPass(bloom);
-  composer.addPass(new OutputPass());
+  const output = new OutputPass();
+  composer.addPass(output);
   battle.composer = composer;
+  battle.bloomPass = bloom;
+  battle.outputPass = output;
 }
 
 // ---------- effets : jets de particules (un burst = un THREE.Points) ----------
@@ -195,7 +201,8 @@ function flashLight(battle, x2, y2, intensity = 60) {
 export function startBattle(config) {
   const { playerLoadout, opponent, onEnd, copilot = null } = config;
   const canvas = document.getElementById('battle-canvas');
-  if (!renderer) renderer = createRenderer(canvas);
+  // antialias inutile : le rendu passe par l'EffectComposer (le MSAA ne s'applique pas)
+  if (!renderer) renderer = createRenderer(canvas, { antialias: false });
 
   const engine = Engine.create();
   engine.gravity.y = 1;
@@ -206,13 +213,16 @@ export function startBattle(config) {
   Composite.add(engine.world, [ground, wallL, wallR]);
 
   const me = makeCar(engine, playerLoadout, { x: 390, dir: 1, team: 0, name: 'Toi', copilot });
-  const foe = makeCar(engine, opponent.loadout, { x: ARENA_W - 390, dir: -1, team: 1, name: opponent.name, statBoost: opponent.statBoost });
+  const foe = makeCar(engine, opponent.loadout, {
+    x: ARENA_W - 390, dir: -1, team: 1, name: opponent.name,
+    statBoost: opponent.statBoost, dmgBoost: opponent.dmgBoost,
+  });
 
   const battle = {
     engine, canvas, cars: [me, foe], ground, wallL, wallR,
-    projectiles: [], beams: [], bursts: [], waves: [], floaters: [],
+    projectiles: [], beams: [], bursts: [], waves: [], floaters: [], debris: [],
     time: -3.2, wallsDeadly: false,
-    shake: 0, slowmo: 1,
+    shake: 0, slowmo: 1, hitStop: 0, acc: 0,
     finished: false, raf: 0, lastMsg: '',
     result: null, endTimer: 0,
     overlay: document.getElementById('battle-overlay'),
@@ -221,7 +231,10 @@ export function startBattle(config) {
   buildScene(battle);
 
   Events.on(engine, 'collisionActive', ev => {
-    for (const pair of ev.pairs) handleMeleePair(battle, pair);
+    for (const pair of ev.pairs) {
+      handleMeleePair(battle, pair);
+      handleWallPair(battle, pair); // un véhicule déjà collé au mur doit mourir aussi
+    }
   });
   Events.on(engine, 'collisionStart', ev => {
     for (const pair of ev.pairs) {
@@ -252,11 +265,13 @@ export function stopBattle() {
   Events.off(current.engine);
   Composite.clear(current.engine.world, false);
   Engine.clear(current.engine);
-  // libère la scène 3D
+  // libère TOUTES les ressources GPU de la scène (le bloom alloue ~11 render
+  // targets que composer.dispose() ne touche pas)
+  current.bloomPass?.dispose();
+  current.outputPass?.dispose();
   current.composer?.dispose();
-  current.scene.traverse(o => {
-    if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose?.();
-  });
+  current.scene.background?.dispose?.();
+  disposeModel(current.scene, { textures: true });
   current.scene.clear();
   current = null;
 }
@@ -313,6 +328,7 @@ function handleProjectilePair(battle, pair) {
       shockwave(battle, pos.x, pos.y, proj.z);
       flashLight(battle, pos.x, pos.y, 70);
       battle.shake = Math.max(battle.shake, 8);
+      hitStop(battle, 0.07, 0.05); // micro-freeze : l'impact se sent
       for (const car of battle.cars) {
         if (car === proj.owner || car.dead) continue;
         const d = Vector.magnitude(Vector.sub(car.chassis.position, pos));
@@ -340,6 +356,7 @@ function handleWallPair(battle, pair) {
 function applyDamage(battle, car, dmg, at) {
   if (car.dead || (battle.finished && battle.endTimer > 0.4)) return;
   car.hp -= dmg;
+  car.hitFlash = 0.14; // flash rouge du véhicule touché
   battle.floaters.push({
     x: at.x + (Math.random() - 0.5) * 20, y: at.y - 30, z: car.z,
     vy: -90, life: 0.85, text: '-' + Math.max(1, Math.round(dmg)),
@@ -348,18 +365,51 @@ function applyDamage(battle, car, dmg, at) {
   if (car.hp <= 0) killCar(battle, car, 'détruit');
 }
 
+// Micro-freeze d'impact ; le slowmo est restauré à la fin dans step().
+function hitStop(battle, duration, factor) {
+  battle.hitStop = Math.max(battle.hitStop, duration);
+  battle.slowmo = Math.min(battle.slowmo, factor);
+}
+
+// Débris de carrosserie projetés au KO (animés à la main, hors physique 2D).
+function spawnDebris(battle, car) {
+  const debrisMat = new THREE.MeshStandardMaterial({
+    color: car.model.bodyMat.color, roughness: 0.6, metalness: 0.3,
+  });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x3a3f55, roughness: 0.7, metalness: 0.5 });
+  const p = car.chassis.position;
+  for (let i = 0; i < 12; i++) {
+    const s = 0.1 + Math.random() * 0.2;
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(s, s * (0.5 + Math.random()), s),
+      i % 3 === 0 ? darkMat : debrisMat
+    );
+    mesh.position.set(to3x(p.x), to3y(p.y), car.z + (Math.random() - 0.5) * 0.8);
+    battle.scene.add(mesh);
+    const a = Math.random() * Math.PI * 2;
+    battle.debris.push({
+      mesh,
+      vel: new THREE.Vector3(Math.cos(a) * (2 + Math.random() * 5), 4 + Math.random() * 5, (Math.random() - 0.5) * 3),
+      rot: new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8),
+      life: 2.5,
+    });
+  }
+}
+
 function killCar(battle, car, cause) {
   if (car.dead || battle.finished) return;
   car.dead = true;
   car.hp = Math.max(0, car.hp);
   sfxBoom(true);
   battle.shake = 22;
+  hitStop(battle, 0.12, 0.02);
   const p = car.chassis.position;
   burst(battle, p.x, p.y, car.z, 46, 0xff8040, { speed: 7, size: 0.2, life: 1.0, grav: 5 });
   burst(battle, p.x, p.y, car.z, 30, 0xffd060, { speed: 5, size: 0.14, life: 0.8 });
   burst(battle, p.x, p.y, car.z, 18, 0xffffff, { speed: 3, size: 0.1, life: 0.5 });
   shockwave(battle, p.x, p.y, car.z, 0xff5030);
   flashLight(battle, p.x, p.y, 160);
+  spawnDebris(battle, car);
   for (const a of car.axles) Composite.remove(battle.engine.world, a);
   for (const w of car.wheels) Body.setVelocity(w.body, { x: (Math.random() - 0.5) * 14, y: -8 - Math.random() * 5 });
   Body.setVelocity(car.chassis, { x: car.chassis.velocity.x, y: -7 });
@@ -405,12 +455,28 @@ function step(battle, dt, onEnd) {
   const prev = battle.time;
   battle.time += dt;
 
+  // fin du micro-freeze d'impact
+  if (battle.hitStop > 0) {
+    battle.hitStop -= dt;
+    if (battle.hitStop <= 0) battle.slowmo = battle.finished ? 0.25 : 1;
+  }
+
   if (battle.time < 0) {
     const n = Math.ceil(-battle.time);
-    showMsg(battle, n <= 3 ? String(n) : '');
+    const label = n <= 3 ? String(n) : '';
+    if (label && label !== battle.lastMsg) sfxCount();
+    showMsg(battle, label);
     return;
   }
-  if (prev < 0) showMsg(battle, 'MIAOU !');
+  if (prev < 0) {
+    showMsg(battle, 'MIAOU !');
+    sfxGo();
+    battle.shake = 6;
+    for (const car of cars) {
+      const back = worldPoint(car, -car.spec.body.w / 2 - 10, car.spec.body.h / 2);
+      burst(battle, back.x, back.y, car.z, 10, 0x8a7fae, { speed: 2, size: 0.18, life: 0.6, grav: -1 });
+    }
+  }
   if (battle.time > 0.9 && battle.lastMsg === 'MIAOU !') showMsg(battle, '');
 
   if (battle.finished) {
@@ -427,6 +493,11 @@ function step(battle, dt, onEnd) {
   if (remaining <= 0 && !battle.wallsDeadly) {
     battle.wallsDeadly = true;
     showMsg(battle, 'LES MURS !');
+    sfxSiren();
+    // couleur des murs figée ici (une fois) ; seule l'intensité est animée ensuite
+    for (const w3 of [battle.wall3L, battle.wall3R]) {
+      w3.userData.wallMat.emissive.setHex(0x8f1024);
+    }
     setTimeout(() => battle.lastMsg === 'LES MURS !' && showMsg(battle, ''), 900);
   }
   if (battle.wallsDeadly && !battle.finished) {
@@ -448,7 +519,15 @@ function step(battle, dt, onEnd) {
     } else car.flipTimer = 0;
   }
 
-  Engine.update(engine, 1000 / 60 * battle.slowmo);
+  // physique à pas fixe : indépendante du taux de rafraîchissement (60/120 Hz)
+  const STEP = 1000 / 60;
+  battle.acc += dt * 1000 * battle.slowmo;
+  let iter = 0;
+  while (battle.acc >= STEP && iter < 4) {
+    Engine.update(engine, STEP);
+    battle.acc -= STEP;
+    iter++;
+  }
   updateEffects(battle, dt);
   updateHud(battle, remaining);
 }
@@ -497,9 +576,9 @@ function updateDrive(battle, car, enemy, dt) {
   }
   // poussière soulevée par les roues
   car.dustTimer = (car.dustTimer || 0) - dt;
-  if (car.dustTimer <= 0 && Math.abs(v.x) > 2.5) {
+  if (car.dustTimer <= 0 && Math.abs(v.x) > 2.5 && car.wheels.length) {
     car.dustTimer = 0.09;
-    const w = car.wheels[Math.random() < 0.5 ? 0 : 1];
+    const w = car.wheels[Math.floor(Math.random() * car.wheels.length)];
     if (w.body.position.y > GROUND_Y - w.r - 10) {
       burst(battle, w.body.position.x, GROUND_Y - 4, car.z + 0.3, 1, 0x8a7fae,
         { speed: 0.9, size: 0.2, life: 0.55, grav: -0.6 });
@@ -655,6 +734,33 @@ function updateEffects(battle, dt) {
   for (const f of battle.floaters) { f.y += f.vy * dt; f.life -= dt; }
   battle.floaters = battle.floaters.filter(f => f.life > 0);
 
+  // débris de carrosserie (gravité + rebond au sol)
+  for (const d of battle.debris) {
+    d.life -= dt;
+    if (d.life <= 0) {
+      battle.scene.remove(d.mesh);
+      d.mesh.geometry.dispose();
+      continue;
+    }
+    d.vel.y -= 12 * dt;
+    d.mesh.position.addScaledVector(d.vel, dt);
+    if (d.mesh.position.y < 0.08) {
+      d.mesh.position.y = 0.08;
+      d.vel.y *= -0.45;
+      d.vel.x *= 0.8;
+    }
+    d.mesh.rotation.x += d.rot.x * dt;
+    d.mesh.rotation.y += d.rot.y * dt;
+    d.mesh.rotation.z += d.rot.z * dt;
+    if (d.life < 0.5) d.mesh.scale.setScalar(Math.max(0.01, d.life * 2));
+  }
+  battle.debris = battle.debris.filter(d => d.life > 0);
+
+  // décroissance du flash de dégâts
+  for (const car of battle.cars) {
+    if (car.hitFlash > 0) car.hitFlash = Math.max(0, car.hitFlash - dt);
+  }
+
   battle.flash.intensity = Math.max(0, battle.flash.intensity - 350 * dt);
   battle.shake = Math.max(0, battle.shake - 60 * dt);
 }
@@ -674,11 +780,14 @@ function updateHud(battle, remaining) {
 function resize(battle) {
   const canvas = battle.canvas;
   const w = canvas.clientWidth, h = canvas.clientHeight;
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  renderer.setPixelRatio(dpr);
   renderer.setSize(w, h, false);
   battle.composer.setSize(w, h);
+  // le bloom travaille en demi-résolution : suffisant et 4x moins cher
+  battle.bloomPass.setSize(w * dpr / 2, h * dpr / 2);
   battle.camera.aspect = w / h;
   battle.camera.updateProjectionMatrix();
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
   battle.overlay.width = w * dpr;
   battle.overlay.height = h * dpr;
   battle.dpr = dpr;
@@ -698,6 +807,16 @@ function syncCar(battle, car, t) {
     wm.position.set(to3x(wb.position.x), to3y(wb.position.y), car.z);
     wm.rotation.z = -wb.angle;
   });
+  // flash rouge quand le véhicule encaisse
+  const bodyMat = car.model.bodyMat;
+  if (bodyMat) {
+    if (car.hitFlash > 0) {
+      bodyMat.emissive.setHex(0xff2233);
+      bodyMat.emissiveIntensity = car.hitFlash * 6;
+    } else if (bodyMat.emissiveIntensity !== 0) {
+      bodyMat.emissiveIntensity = 0;
+    }
+  }
   // animations : scies/perceuses qui tournent, flammes qui vacillent
   for (const anim of car.model.spins) {
     for (const s of anim.spin) {
@@ -727,14 +846,14 @@ function render(battle, t, dt) {
     }
   }
 
-  // murs
+  // murs (couleur émissive posée une seule fois au passage en mode mortel)
   battle.wall3L.position.x = to3x(battle.wallL.position.x + 30);
   battle.wall3R.position.x = to3x(battle.wallR.position.x - 30);
-  for (const w3 of [battle.wall3L, battle.wall3R]) {
-    const glow = w3.userData.glow;
-    if (battle.wallsDeadly) {
-      glow.material.opacity = 0.3 + Math.sin(t * 9) * 0.18;
-      w3.userData.wallMat.emissive = new THREE.Color(0x8f1024);
+  if (battle.wallsDeadly) {
+    const pulse = 0.6 + 0.4 * Math.sin(t * 9);
+    for (const w3 of [battle.wall3L, battle.wall3R]) {
+      w3.userData.glow.material.opacity = 0.3 * pulse + 0.12;
+      w3.userData.wallMat.emissiveIntensity = pulse;
     }
   }
 
@@ -745,7 +864,7 @@ function render(battle, t, dt) {
   const span = Math.abs(ax - bx) + 3.2;
   const vFov = camera.fov * Math.PI / 180;
   const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
-  const targetDist = Math.min(Math.max((span / 2) / Math.tan(hFov / 2), 6.5), 46);
+  const targetDist = Math.min(Math.max((span / 2) / Math.tan(hFov / 2), 8), 46);
   battle.camX += (midX - battle.camX) * Math.min(1, dt * 5);
   battle.camDist += (targetDist - battle.camDist) * Math.min(1, dt * 3.5);
   const shk = battle.shake * 0.012;
@@ -777,12 +896,13 @@ function render(battle, t, dt) {
 }
 
 // Superposition 2D : dégâts flottants + mini barres de PV projetées.
+const PROJ_V = new THREE.Vector3(); // réutilisé à chaque frame, zéro allocation
 function renderOverlay(battle) {
   const ctx = battle.overlay.getContext('2d');
   const W = battle.overlay.width, H = battle.overlay.height;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  const v = new THREE.Vector3();
+  const v = PROJ_V;
   const project = (x2, y2, z) => {
     v.set(to3x(x2), to3y(y2), z).project(battle.camera);
     return [(v.x + 1) / 2 * W, (1 - v.y) / 2 * H];

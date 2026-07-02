@@ -8,12 +8,20 @@ function ac() {
     if (!AC) return null;
     ctx = new AC();
   }
-  if (ctx.state === 'suspended') ctx.resume();
+  // couvre aussi l'état non standard 'interrupted' d'iOS (appel, Siri…)
+  if (ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume();
   return ctx;
 }
 
 // À appeler sur le premier geste utilisateur (obligatoire sur iOS).
 export function unlockAudio() { ac(); }
+
+// Suspend/reprend selon la visibilité de l'app (batterie, politesse).
+export function handleVisibility() {
+  if (!ctx) return;
+  if (document.hidden) ctx.suspend?.();
+  else if (ctx.state !== 'closed') ctx.resume?.();
+}
 
 function env(g, t0, a, d, peak = 0.3) {
   g.gain.setValueAtTime(0.0001, t0);
@@ -98,6 +106,69 @@ export function sfxLose() {
     env(g, t0, 0.01, 0.28, 0.12);
     o.connect(g).connect(c.destination);
     o.start(t0); o.stop(t0 + 0.45);
+  });
+}
+
+// Bip du compte à rebours (3, 2, 1).
+export function sfxCount() {
+  const c = ac(); if (!c) return;
+  const o = c.createOscillator(), g = c.createGain();
+  o.type = 'triangle'; o.frequency.value = 660;
+  env(g, c.currentTime, 0.005, 0.12, 0.2);
+  o.connect(g).connect(c.destination);
+  o.start(); o.stop(c.currentTime + 0.18);
+}
+
+// « MIAOU ! » de départ : bip montant.
+export function sfxGo() {
+  const c = ac(); if (!c) return;
+  const o = c.createOscillator(), g = c.createGain();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(990, c.currentTime);
+  o.frequency.exponentialRampToValueAtTime(1320, c.currentTime + 0.12);
+  env(g, c.currentTime, 0.005, 0.3, 0.28);
+  o.connect(g).connect(c.destination);
+  o.start(); o.stop(c.currentTime + 0.4);
+}
+
+// Sirène des murs de la mort.
+export function sfxSiren() {
+  const c = ac(); if (!c) return;
+  const o = c.createOscillator(), g = c.createGain();
+  o.type = 'sawtooth';
+  for (let i = 0; i < 3; i++) {
+    o.frequency.setValueAtTime(420, c.currentTime + i * 0.36);
+    o.frequency.linearRampToValueAtTime(720, c.currentTime + i * 0.36 + 0.18);
+    o.frequency.linearRampToValueAtTime(420, c.currentTime + (i + 1) * 0.36);
+  }
+  env(g, c.currentTime, 0.02, 1.05, 0.12);
+  o.connect(g).connect(c.destination);
+  o.start(); o.stop(c.currentTime + 1.15);
+}
+
+// Médaille gagnée : double carillon.
+export function sfxMedal() {
+  const c = ac(); if (!c) return;
+  [880, 1320].forEach((freq, i) => {
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = 'triangle'; o.frequency.value = freq;
+    const t0 = c.currentTime + i * 0.11;
+    env(g, t0, 0.005, 0.3, 0.22);
+    o.connect(g).connect(c.destination);
+    o.start(t0); o.stop(t0 + 0.45);
+  });
+}
+
+// Promotion : fanfare courte.
+export function sfxPromote() {
+  const c = ac(); if (!c) return;
+  [523, 659, 784, 1047, 784, 1047, 1319].forEach((freq, i) => {
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = 'square'; o.frequency.value = freq;
+    const t0 = c.currentTime + i * 0.11;
+    env(g, t0, 0.008, 0.22, 0.09);
+    o.connect(g).connect(c.destination);
+    o.start(t0); o.stop(t0 + 0.35);
   });
 }
 

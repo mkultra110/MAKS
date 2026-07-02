@@ -1,17 +1,26 @@
 // Point d'entrée : navigation entre écrans et déroulé d'une partie.
 import * as THREE from 'three';
-import { partDef, LEAGUES, leagueIndex } from './data.js';
+import { partDef, upgradeCost, LEAGUES, leagueIndex } from './data.js';
 import {
   state, load, buildLoadout, computeCarStats, makeOpponent, makeRoster,
-  winRewards, save, ROSTER_SIZE, MEDALS_TO_ADVANCE,
+  winRewards, defeatReward, save, ROSTER_SIZE, MEDALS_TO_ADVANCE,
 } from './state.js';
 import { buildCarSpec } from './car.js';
-import { createRenderer, createStudioScene } from './render3d.js';
+import { createRenderer, createStudioScene, disposeModel } from './render3d.js';
 import { createCarModel, poseCarStatic } from './models3d.js';
 import { carSnapshot, partThumb, avatarThumb } from './thumbs.js';
 import { initGarage, renderGarage, startPreview, stopPreview } from './garage.js';
 import { startBattle } from './battle.js';
-import { unlockAudio, sfxClick, sfxWin, sfxLose } from './sfx.js';
+import { unlockAudio, handleVisibility, sfxClick, sfxWin, sfxLose, sfxMedal, sfxPromote } from './sfx.js';
+
+// Vibrations : plugin Capacitor Haptics si présent (app native), sinon vibrate.
+function haptic(style = 'MEDIUM') {
+  try {
+    const h = window.Capacitor?.Plugins?.Haptics;
+    if (h) h.impact({ style });
+    else navigator.vibrate?.(style === 'HEAVY' ? 60 : 25);
+  } catch (e) {}
+}
 
 const PLAYER_NAME = 'Toi';
 let pendingOpponent = null;
@@ -65,6 +74,13 @@ function stopSplash() {
   if (!splash) return;
   splash.running = false;
   cancelAnimationFrame(splash.raf);
+  // libère complètement le contexte WebGL de l'accueil (on n'y revient jamais)
+  splash.scene.background?.dispose?.();
+  disposeModel(splash.scene, { textures: true });
+  splash.scene.clear();
+  splash.renderer.dispose();
+  splash.renderer.forceContextLoss?.();
+  splash = null;
 }
 
 // ---------- confettis de victoire ----------
@@ -204,14 +220,47 @@ function launchBattle() {
   });
 }
 
+// Bannière entre deux combats du Grand Combat.
+function gauntletBanner(text, then) {
+  const el = document.getElementById('gauntlet-banner');
+  el.textContent = text;
+  el.classList.remove('hidden');
+  setTimeout(() => {
+    el.classList.add('hidden');
+    then();
+  }, 1300);
+}
+
+// Conseil actionnable après des défaites répétées.
+let defeatStreak = 0;
+function defeatAdvice() {
+  const lo = buildLoadout();
+  const candidates = [lo.body, ...lo.wheels, ...lo.weapons, ...lo.gadgets].filter(Boolean);
+  const affordable = candidates
+    .map(p => ({ p, cost: upgradeCost(p) }))
+    .filter(c => c.cost <= state.coins)
+    .sort((a, b) => a.cost - b.cost);
+  if (affordable.length) {
+    const { p, cost } = affordable[0];
+    return `Conseil : améliore ta pièce « ${partDef(p).name} » (${cost} pièces d'or).`;
+  }
+  return 'Conseil : recycle tes doublons pour financer des améliorations.';
+}
+
 function onBattleEnd(result) {
   const title = document.getElementById('result-title');
   const partEl = document.getElementById('reward-part');
   const leagueEl = document.getElementById('result-league');
+  const progressEl = document.getElementById('result-progress');
+  const btnNext = document.getElementById('btn-next');
   partEl.classList.add('hidden');
   leagueEl.classList.add('hidden');
+  progressEl.classList.add('hidden');
+  btnNext.classList.add('hidden');
 
   if (result.win) {
+    defeatStreak = 0;
+    const beatenName = pendingOpponent.name;
     const r = winRewards(pendingQuick, pendingOpponent.idx);
     // Grand Combat : on enchaîne tant qu'on n'est pas promu (ou plus d'adversaires)
     if (gauntlet && !r.promoted) {
@@ -221,17 +270,30 @@ function onBattleEnd(result) {
       const next = nextUnbeaten();
       if (next) {
         pendingOpponent = next;
-        launchBattle();
+        sfxMedal();
+        gauntletBanner(`VICTOIRE ×${gauntlet.fought} !`, launchBattle);
         return;
       }
     }
-    sfxWin();
+    haptic('HEAVY');
+    if (r.promoted) sfxPromote(); else { sfxWin(); if (r.medal) sfxMedal(); }
     title.textContent = r.promoted ? 'PROMU !' : 'VICTOIRE !';
     title.className = 'result-title win';
-    const bits = [result.reason];
-    if (r.medal) bits.push('Médaille gagnée !');
+    const bits = [`${beatenName} est K.O. !`];
+    if (gauntlet && gauntlet.fought > 0) bits.push(`Série du Grand Combat : ${gauntlet.fought + 1} victoires !`);
+    if (r.medal) bits.push('Médaille prise !');
     if (r.promoted) bits.push(`Bienvenue à l'étape ${state.stage} !`);
     document.getElementById('result-sub').textContent = bits.join(' ');
+    if (!pendingQuick && !r.promoted) {
+      progressEl.textContent = `🏅 ${state.medals.length}/${MEDALS_TO_ADVANCE} médailles vers la promotion`;
+      progressEl.classList.remove('hidden');
+      const next = nextUnbeaten();
+      if (next) {
+        pendingOpponent = next;
+        btnNext.textContent = `⚔ Adversaire suivant : ${next.name}`;
+        btnNext.classList.remove('hidden');
+      }
+    }
     const leagueUp = r.leagueUp || (gauntlet && gauntlet.leagueUp);
     if (leagueUp) {
       leagueEl.textContent = `NOUVELLE LIGUE : ${leagueUp.name.toUpperCase()} ! +${leagueUp.bonus} pièces`;
@@ -239,28 +301,38 @@ function onBattleEnd(result) {
     }
     const totalCoins = r.coins + (gauntlet ? gauntlet.coins : 0);
     countUp(document.getElementById('reward-coins'), totalCoins);
-    if (r.part) {
+    const shown = r.part || (r.extraParts && r.extraParts[0]);
+    if (shown) {
       partEl.classList.remove('hidden');
-      document.getElementById('reward-img').src = partThumb(r.part);
+      document.getElementById('reward-img').src = partThumb(shown);
+      const extra = r.extraParts && r.extraParts.length > 1 ? ` (+${r.extraParts.length - (r.part ? 0 : 1)} autres !)` : '';
       document.getElementById('reward-name').textContent =
-        `${partDef(r.part).name} ${'★'.repeat(r.part.stars)} · niv. ${r.part.level}`;
+        `${partDef(shown).name} ${'★'.repeat(shown.stars)} · niv. ${shown.level}${extra}`;
     }
     show('screen-result');
     confetti();
   } else {
+    defeatStreak++;
+    haptic('MEDIUM');
     sfxLose();
     title.textContent = 'DÉFAITE';
     title.className = 'result-title lose';
-    let sub = result.reason + ' Améliore tes pièces et réessaie !';
-    let coins = 5;
+    let coins = defeatReward(pendingQuick);
+    let sub = result.reason;
     if (gauntlet) {
       sub = `${result.reason} Série du Grand Combat terminée : ${gauntlet.fought} victoire${gauntlet.fought > 1 ? 's' : ''}.`;
       coins += gauntlet.coins;
+    } else if (defeatStreak >= 2) {
+      sub += ' ' + defeatAdvice();
+    } else {
+      sub += ' Améliore tes pièces et réessaie !';
     }
     document.getElementById('result-sub').textContent = sub;
     document.getElementById('reward-coins').textContent = '+' + coins;
-    state.coins += 5;
-    save();
+    if (!gauntlet) {
+      btnNext.textContent = '🔄 Revanche !';
+      btnNext.classList.remove('hidden');
+    }
     show('screen-result');
   }
   gauntlet = null;
@@ -302,9 +374,25 @@ function boot() {
     if (!pendingQuick) { renderRoster(); renderGarage(); show('screen-roster'); }
     else { renderGarage(); show('screen-garage'); }
   });
+  // « Adversaire suivant » après une victoire / « Revanche » après une défaite
+  document.getElementById('btn-next').addEventListener('click', () => {
+    sfxClick();
+    gotoVs(pendingQuick, pendingQuick ? null : pendingOpponent);
+  });
+
+  // halo d'onboarding sur le bouton championnat tant qu'on n'a jamais combattu
+  if (state.totalWins === 0) document.getElementById('btn-fight').classList.add('attention');
+  document.getElementById('btn-fight').addEventListener('click', function once() {
+    this.classList.remove('attention');
+  }, { once: true });
 
   window.addEventListener('touchstart', unlockAudio, { once: true });
   window.addEventListener('mousedown', unlockAudio, { once: true });
+  // batterie/politesse : audio suspendu en arrière-plan + check de mise à jour
+  document.addEventListener('visibilitychange', () => {
+    handleVisibility();
+    if (!document.hidden) navigator.serviceWorker?.getRegistration?.().then(r => r?.update()).catch(() => {});
+  });
 
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
