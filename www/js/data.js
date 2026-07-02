@@ -158,6 +158,15 @@ export const SETS = {
   voltige: { name: 'Voltige',    parts: ['pony', 'tiny', 'stinger', 'booster'], bonus: { speed: 1.15 },  desc: '+15% vitesse' },
 };
 
+// ---- Mutateurs du Défi du jour ----
+export const MUTATORS = [
+  { key: 'lowgrav', name: 'Gravité lunaire', desc: 'La gravité est divisée par deux — tout le monde vole !' },
+  { key: 'turbo',   name: 'Turbo fou',       desc: 'Vitesse ×1.6 pour tout le monde' },
+  { key: 'glass',   name: 'Canons de verre', desc: 'Dégâts ×1.8 pour tout le monde' },
+  { key: 'rockets', name: 'Pluie de feu',    desc: 'Cadence des armes à distance ×2.5' },
+  { key: 'bouncy',  name: 'Rebondissant',    desc: 'Tout rebondit comme du caoutchouc' },
+];
+
 // ---- Peintures de châssis ----
 export const PAINTS = [
   '#3f9bff', '#9a63ff', '#35d97c', '#ff8f31', '#ff5f9e',

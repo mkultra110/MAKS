@@ -1,6 +1,6 @@
 // Point d'entrée : navigation entre écrans et déroulé d'une partie.
 import * as THREE from 'three';
-import { partDef, upgradeCost, LEAGUES, leagueIndex, SETS } from './data.js';
+import { partDef, upgradeCost, LEAGUES, leagueIndex, SETS, MUTATORS, seededRng, randomPart } from './data.js';
 import {
   state, load, buildLoadout, computeCarStats, makeOpponent, makeRoster,
   winRewards, defeatReward, prestigeBoost, save, ROSTER_SIZE, MEDALS_TO_ADVANCE,
@@ -31,8 +31,10 @@ let pendingBet = null; // { a, b, choice, amount, oddsA, oddsB } pendant un pari
 function show(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
   document.getElementById(id).classList.remove('hidden');
-  if (id === 'screen-garage') startPreview();
-  else stopPreview();
+  if (id === 'screen-garage') {
+    startPreview();
+    renderDailyBanner();
+  } else stopPreview();
   if (id !== 'screen-splash') stopSplash();
 }
 
@@ -199,6 +201,50 @@ function nextUnbeaten() {
   return makeRoster(state.stage).find(o => !state.medals.includes(o.idx)) || null;
 }
 
+// ---------- Défi du jour : un combat à mutateur, une récompense 3★ par jour ----------
+let pendingDaily = null;
+
+function todayKey() { return new Date().toISOString().slice(0, 10); }
+function dailyOfToday() {
+  const day = todayKey();
+  const seed = [...day].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) & 0x7fffffff;
+  const rng = seededRng(seed);
+  const mutator = MUTATORS[Math.floor(rng() * MUTATORS.length)];
+  const opponent = makeOpponent(state.stage, Math.floor(rng() * ROSTER_SIZE));
+  return { day, mutator, opponent: { ...opponent, name: '🎯 ' + opponent.name, idx: null } };
+}
+
+function renderDailyBanner() {
+  const el = document.getElementById('daily-banner');
+  if (!el) return;
+  el.classList.remove('hidden');
+  if (state.dailyDone === todayKey()) {
+    el.className = 'daily-banner done';
+    el.textContent = '✓ Défi du jour réussi — reviens demain !';
+  } else {
+    const { mutator } = dailyOfToday();
+    el.className = 'daily-banner';
+    el.textContent = `🎯 Défi du jour : ${mutator.name} — gagne une pièce 3★ !`;
+  }
+}
+
+function gotoDaily() {
+  const daily = dailyOfToday();
+  pendingDaily = daily;
+  pendingQuick = true; // routage du résultat vers le garage
+  gauntlet = null;
+  pendingOpponent = daily.opponent;
+  const lo = buildLoadout();
+  document.getElementById('vs-me').src = carSnapshot(lo, { dir: 1 });
+  document.getElementById('vs-them').src = carSnapshot(daily.opponent.loadout, { dir: -1 });
+  document.getElementById('vs-me-name').textContent = PLAYER_NAME;
+  document.getElementById('vs-me-stats').textContent = statLine(lo);
+  document.getElementById('vs-them-name').textContent = daily.opponent.name;
+  document.getElementById('vs-them-stats').textContent =
+    `${daily.mutator.name} : ${daily.mutator.desc}`;
+  show('screen-vs');
+}
+
 // ---------- les Paris : deux machines s'affrontent, on mise ----------
 let betPair = null;
 let betAmount = 25;
@@ -257,6 +303,7 @@ function placeBet(choice) {
   if (betAmount <= 0 || betAmount > state.coins) return;
   state.coins -= betAmount;
   save();
+  pendingDaily = null;
   pendingQuick = true; // le bouton « Continuer » du résultat ramène au garage
   pendingBet = { ...betPair, choice, amount: betAmount, odds: betPair.odds };
   show('screen-battle');
@@ -310,6 +357,7 @@ function onBetEnd(result) {
 
 // ---------- déroulé d'une partie ----------
 function gotoVs(quick, opponent = null) {
+  pendingDaily = null;
   pendingQuick = quick;
   pendingOpponent = opponent || makeOpponent(Math.max(1, state.stage - 1), Math.floor(Math.random() * ROSTER_SIZE), true);
   const lo = buildLoadout();
@@ -334,6 +382,7 @@ function launchBattle() {
     opponent: pendingOpponent,
     copilot: state.copilot,
     themeIndex: leagueIndex(state.stage),
+    mutator: pendingDaily ? pendingDaily.mutator : null,
     onEnd: onBattleEnd,
   });
 }
@@ -381,6 +430,18 @@ function onBattleEnd(result) {
     const beatenName = pendingOpponent.name;
     const wasBoss = !!pendingOpponent.boss;
     const r = winRewards(pendingQuick, pendingOpponent.idx);
+    // Défi du jour réussi : grosse prime + pièce 3★ garantie
+    let dailyPart = null;
+    if (pendingDaily && state.dailyDone !== pendingDaily.day) {
+      state.dailyDone = pendingDaily.day;
+      const bonus = 80 + state.stage * 20;
+      state.coins += bonus;
+      r.coins += bonus;
+      dailyPart = randomPart(seededRng((Date.now() & 0x7fffffff) ^ 0x51ab), state.stage, 3);
+      state.inventory.push(dailyPart);
+      r.part = r.part || dailyPart;
+      save();
+    }
     // le boss de fin de ligue paie 50% de plus
     let bossBonus = 0;
     if (wasBoss) {
@@ -402,10 +463,11 @@ function onBattleEnd(result) {
       }
     }
     haptic('HEAVY');
-    if (r.promoted) sfxPromote(); else { sfxWin(); if (r.medal) sfxMedal(); }
-    title.textContent = r.prestiged ? 'PRESTIGE !' : (r.promoted ? 'PROMU !' : 'VICTOIRE !');
+    if (r.promoted) sfxPromote(); else { sfxWin(); if (r.medal || dailyPart) sfxMedal(); }
+    title.textContent = dailyPart ? 'DÉFI RÉUSSI !' : (r.prestiged ? 'PRESTIGE !' : (r.promoted ? 'PROMU !' : 'VICTOIRE !'));
     title.className = 'result-title win';
     const bits = [`${beatenName} est K.O. !`];
+    if (dailyPart) bits.push(`Défi « ${pendingDaily.mutator.name} » dans la poche !`);
     if (wasBoss) bits.push(`Boss vaincu : +${bossBonus} pièces bonus !`);
     if (gauntlet && gauntlet.fought > 0) bits.push(`Série du Grand Combat : ${gauntlet.fought + 1} victoires !`);
     if (r.medal) bits.push('Médaille prise !');
@@ -473,6 +535,7 @@ function onBattleEnd(result) {
     show('screen-result');
   }
   gauntlet = null;
+  pendingDaily = null;
 }
 
 function boot() {
@@ -518,6 +581,7 @@ function boot() {
     else gotoVs(pendingQuick, pendingQuick ? null : pendingOpponent);
   });
   document.getElementById('btn-bet').addEventListener('click', () => { sfxClick(); openBets(); });
+  document.getElementById('daily-banner').addEventListener('click', () => { sfxClick(); gotoDaily(); });
   document.getElementById('btn-bet-back').addEventListener('click', () => { sfxClick(); renderGarage(); show('screen-garage'); });
   document.getElementById('btn-bet-shuffle').addEventListener('click', () => { sfxClick(); openBets(true); });
   document.getElementById('btn-bet-a').addEventListener('click', () => { sfxClick(); placeBet('a'); });

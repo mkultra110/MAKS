@@ -18,6 +18,30 @@ const { Engine, Bodies, Body, Composite, Constraint, Events, Vector } = Matter;
 
 const ARENA_W = 1400;
 const GROUND_Y = 620;
+
+// Terrains par ligue : le sol n'est plus plat à partir du Bronze.
+// bump = colline (cercle enterré), ramp = tremplin incliné, plateau = podium central.
+const TERRAINS = [
+  [], // Bois : plat, pour apprendre
+  [{ type: 'bump', x: ARENA_W / 2, r: 150, drop: 80 }], // Bronze : colline centrale à disputer
+  [ // Argent : double tremplin vers le centre
+    { type: 'ramp', x: ARENA_W / 2 - 270, w: 260, h: 26, angle: 0.2 },
+    { type: 'ramp', x: ARENA_W / 2 + 270, w: 260, h: 26, angle: -0.2 },
+  ],
+  [ // Or : podium central surélevé
+    { type: 'plateau', x: ARENA_W / 2, w: 300, h: 64 },
+    { type: 'ramp', x: ARENA_W / 2 - 230, w: 190, h: 24, angle: 0.34 },
+    { type: 'ramp', x: ARENA_W / 2 + 230, w: 190, h: 24, angle: -0.34 },
+  ],
+  [ // Diamant : deux bosses
+    { type: 'bump', x: ARENA_W / 2 - 290, r: 120, drop: 65 },
+    { type: 'bump', x: ARENA_W / 2 + 290, r: 120, drop: 65 },
+  ],
+  [ // Légende : grand tremplin central
+    { type: 'ramp', x: ARENA_W / 2 - 150, w: 280, h: 28, angle: 0.3 },
+    { type: 'ramp', x: ARENA_W / 2 + 150, w: 280, h: 28, angle: -0.3 },
+  ],
+];
 const BATTLE_TIME = 45;     // secondes avant les murs de la mort
 const MELEE_TICK = 0.25;    // période des dégâts de mêlée
 const FLIP_TIME = 2.5;      // secondes retourné avant KO
@@ -136,6 +160,34 @@ function buildScene(battle, themeIndex = 0) {
 
   battle.env = createArena(scene, ARENA_W, theme);
 
+  // meshes du terrain (alignés sur les corps statiques Matter)
+  const terrainMat = new THREE.MeshStandardMaterial({ color: theme.track, roughness: 0.8, metalness: 0.1 });
+  const edgeMat = new THREE.MeshBasicMaterial({ color: 0xffc93e, transparent: true, opacity: 0.5 });
+  for (const t of battle.terrain) {
+    if (t.type === 'bump') {
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(t.r * S, t.r * S, 6, 36), terrainMat);
+      cyl.rotation.x = Math.PI / 2;
+      cyl.position.set(to3x(t.x), to3y(GROUND_Y + t.r - t.drop), 0);
+      cyl.receiveShadow = true;
+      scene.add(cyl);
+    } else if (t.type === 'plateau') {
+      const box = new THREE.Mesh(new THREE.BoxGeometry(t.w * S, t.h * S + 0.3, 6), terrainMat);
+      box.position.set(to3x(t.x), to3y(GROUND_Y - t.h / 2) - 0.1, 0);
+      box.receiveShadow = true;
+      scene.add(box);
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(t.w * S, 0.06, 6.02), edgeMat);
+      edge.position.set(to3x(t.x), to3y(GROUND_Y - t.h) + 0.03, 0);
+      scene.add(edge);
+    } else { // ramp
+      const lift = Math.abs(Math.sin(t.angle)) * t.w * 0.25;
+      const box = new THREE.Mesh(new THREE.BoxGeometry(t.w * S, t.h * S + 0.24, 6), terrainMat);
+      box.position.set(to3x(t.x), to3y(GROUND_Y - t.h / 2 - lift) - 0.08, 0);
+      box.rotation.z = -t.angle;
+      box.receiveShadow = true;
+      scene.add(box);
+    }
+  }
+
   // véhicules
   for (const car of battle.cars) {
     const model = createCarModel(car.spec);
@@ -215,18 +267,33 @@ function flashLight(battle, x2, y2, intensity = 60) {
 
 // ---------- combat ----------
 export function startBattle(config) {
-  const { playerLoadout, opponent, onEnd, copilot = null, themeIndex = 0, playerBoost = 1, playerDmgBoost = null } = config;
+  const { playerLoadout, opponent, onEnd, copilot = null, themeIndex = 0, playerBoost = 1, playerDmgBoost = null, mutator = null } = config;
   const canvas = document.getElementById('battle-canvas');
   // antialias inutile : le rendu passe par l'EffectComposer (le MSAA ne s'applique pas)
   if (!renderer) renderer = createRenderer(canvas, { antialias: false });
 
   const engine = Engine.create();
-  engine.gravity.y = 1;
+  engine.gravity.y = mutator?.key === 'lowgrav' ? 0.45 : 1;
 
   const ground = Bodies.rectangle(ARENA_W / 2, GROUND_Y + 40, ARENA_W * 3, 80, { isStatic: true, label: 'ground', friction: 0.9 });
   const wallL = Bodies.rectangle(-30, GROUND_Y - 300, 60, 700, { isStatic: true, label: 'wall:L' });
   const wallR = Bodies.rectangle(ARENA_W + 30, GROUND_Y - 300, 60, 700, { isStatic: true, label: 'wall:R' });
   Composite.add(engine.world, [ground, wallL, wallR]);
+
+  // terrain de la ligue (collines/tremplins/podium)
+  const terrain = TERRAINS[Math.min(themeIndex, TERRAINS.length - 1)] || [];
+  for (const t of terrain) {
+    let body;
+    if (t.type === 'bump') {
+      body = Bodies.circle(t.x, GROUND_Y + t.r - t.drop, t.r, { isStatic: true, label: 'ground', friction: 0.9 });
+    } else if (t.type === 'plateau') {
+      body = Bodies.rectangle(t.x, GROUND_Y - t.h / 2, t.w, t.h, { isStatic: true, label: 'ground', friction: 0.9 });
+    } else { // ramp
+      const lift = Math.abs(Math.sin(t.angle)) * t.w * 0.25;
+      body = Bodies.rectangle(t.x, GROUND_Y - t.h / 2 - lift, t.w, t.h, { isStatic: true, angle: t.angle, label: 'ground', friction: 0.9 });
+    }
+    Composite.add(engine.world, body);
+  }
 
   const me = makeCar(engine, playerLoadout, {
     x: 390, dir: 1, team: 0, name: 'Toi', copilot,
@@ -238,7 +305,7 @@ export function startBattle(config) {
   });
 
   const battle = {
-    engine, canvas, cars: [me, foe], ground, wallL, wallR,
+    engine, canvas, cars: [me, foe], ground, wallL, wallR, terrain,
     projectiles: [], beams: [], bursts: [], waves: [], floaters: [], debris: [],
     time: -3.2, wallsDeadly: false,
     shake: 0, slowmo: 1, hitStop: 0, acc: 0,
@@ -252,6 +319,20 @@ export function startBattle(config) {
   };
   current = battle;
   if (localStorage.getItem('maks_debug')) window.__battle = battle;
+
+  // mutateurs du Défi du jour (appliqués aux DEUX camps, équitable)
+  battle.mutator = mutator;
+  if (mutator) {
+    for (const car of battle.cars) {
+      if (mutator.key === 'turbo') car.speedMult *= 1.6;
+      if (mutator.key === 'glass') car.dmgMult *= 1.8;
+      if (mutator.key === 'rockets') car.cdMult *= 0.4;
+      if (mutator.key === 'bouncy') {
+        car.chassis.restitution = 0.85;
+        for (const w of car.wheels) w.body.restitution = 0.85;
+      }
+    }
+  }
   buildScene(battle, themeIndex);
 
   Events.on(engine, 'collisionActive', ev => {
@@ -584,6 +665,7 @@ function step(battle, dt, onEnd) {
     showMsg(battle, 'MIAOU !');
     sfxGo();
     startBattleAudio(); // foule + moteurs en continu
+    if (battle.mutator) showToast(battle, `DÉFI : ${battle.mutator.name.toUpperCase()} !`);
     battle.shake = 6;
     for (const car of cars) {
       const back = worldPoint(car, -car.spec.body.w / 2 - 10, car.spec.body.h / 2);

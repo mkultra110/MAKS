@@ -1,5 +1,5 @@
 // Service worker : jeu 100% jouable hors-ligne, mises à jour propagées.
-const CACHE = 'maks-v7';
+const CACHE = 'maks-v8';
 const ASSETS = [
   '.', 'index.html', 'css/style.css',
   'js/main.js', 'js/data.js', 'js/state.js', 'js/car.js', 'js/garage.js', 'js/battle.js', 'js/sfx.js',

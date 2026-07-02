@@ -17,6 +17,7 @@ export const state = {
   totalWins: 0,
   lastLeague: 0,           // indice de la dernière ligue célébrée
   prestige: 0,             // nombre de prestiges (bonus permanent +4%/prestige)
+  dailyDone: '',           // date (AAAA-MM-JJ) du dernier Défi du jour réussi
   copilot: 'ronron',
   inventory: [],           // liste de pièces
   equipped: { body: null, wheels: [null, null], weapons: [], gadgets: [] }, // ids
@@ -43,6 +44,7 @@ export function load() {
       if (state.lastLeague === undefined) state.lastLeague = leagueIndex(state.stage);
       if (!Array.isArray(state.medals)) state.medals = [];
       if (!Number.isFinite(state.prestige)) state.prestige = 0;
+      if (typeof state.dailyDone !== 'string') state.dailyDone = '';
       if (!Number.isFinite(state.coins) || state.coins < 0) state.coins = 0;
       if (!Number.isFinite(state.stage) || state.stage < 1) state.stage = 1;
       if (!Array.isArray(state.inventory)) throw new Error('inventory');
