@@ -8,6 +8,7 @@ import {
 const SAVE_KEY = 'maks_save_v1';
 export const ROSTER_SIZE = 14;        // 14 adversaires par étape, comme dans CATS
 export const MEDALS_TO_ADVANCE = 8;   // médailles pour être promu (top du classement)
+export const FINAL_STAGE = 24;        // après l'étape 24 : PRESTIGE (reset + bonus permanent)
 
 export const state = {
   coins: 0,
@@ -15,10 +16,16 @@ export const state = {
   medals: [],              // indices des adversaires battus à l'étape courante
   totalWins: 0,
   lastLeague: 0,           // indice de la dernière ligue célébrée
+  prestige: 0,             // nombre de prestiges (bonus permanent +4%/prestige)
   copilot: 'ronron',
   inventory: [],           // liste de pièces
   equipped: { body: null, wheels: [null, null], weapons: [], gadgets: [] }, // ids
 };
+
+// Bonus permanent de prestige appliqué à la machine du joueur.
+export function prestigeBoost() {
+  return 1 + (state.prestige || 0) * 0.04;
+}
 
 export function save() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch (e) { /* stockage privé iOS */ }
@@ -35,6 +42,7 @@ export function load() {
       if (state.copilot === undefined) state.copilot = 'ronron';
       if (state.lastLeague === undefined) state.lastLeague = leagueIndex(state.stage);
       if (!Array.isArray(state.medals)) state.medals = [];
+      if (!Number.isFinite(state.prestige)) state.prestige = 0;
       if (!Number.isFinite(state.coins) || state.coins < 0) state.coins = 0;
       if (!Number.isFinite(state.stage) || state.stage < 1) state.stage = 1;
       if (!Array.isArray(state.inventory)) throw new Error('inventory');
@@ -196,10 +204,11 @@ export function isBossStage(stage) {
 }
 
 export function makeOpponent(stage, round, quick = false) {
-  const seed = quick ? (Date.now() & 0x7fffffff) : (stage * 977 + round * 131 + 7);
+  const seed = quick ? ((Date.now() & 0x7fffffff) ^ (round * 7919)) : (stage * 977 + round * 131 + 7);
   const rng = seededRng(seed);
   const boss = !quick && round === ROSTER_SIZE - 1 && isBossStage(stage);
-  const power = (1 + (stage - 1) * 0.13 + round * 0.03) * (boss ? 1.12 : 1);
+  const prestigeMult = 1 + (state.prestige || 0) * 0.35; // adversaires plus féroces après un prestige
+  const power = (1 + (stage - 1) * 0.13 + round * 0.03) * (boss ? 1.12 : 1) * prestigeMult;
   const mkLevel = () => Math.max(1, Math.round(1 + (stage - 1) * 0.6 + rng() * 2 - (quick ? 1 : 0)) + (boss ? 1 : 0));
 
   const bodyType = pick(rng, Object.keys(BODIES));
@@ -285,6 +294,16 @@ export function winRewards(quick, opponentIdx = null) {
       state.medals = [];
       promoted = true;
       coins += 50 + stage * 15; // prime de promotion
+      // fin du championnat : PRESTIGE — retour à l'étape 1, bonus permanent
+      if (state.stage > FINAL_STAGE) {
+        state.prestige = (state.prestige || 0) + 1;
+        state.stage = 1;
+        state.lastLeague = 0;
+        coins += 800;
+        state.coins += coins;
+        save();
+        return { coins, part, extraParts, leagueUp: null, medal, promoted, prestiged: true };
+      }
       // 2 pièces bonus avec plancher d'étoiles qui monte avec les étapes
       const floor = Math.min(5, 1 + Math.floor(stage / 3));
       for (let i = 0; i < 2; i++) {

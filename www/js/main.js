@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { partDef, upgradeCost, LEAGUES, leagueIndex } from './data.js';
 import {
   state, load, buildLoadout, computeCarStats, makeOpponent, makeRoster,
-  winRewards, defeatReward, save, ROSTER_SIZE, MEDALS_TO_ADVANCE,
+  winRewards, defeatReward, prestigeBoost, save, ROSTER_SIZE, MEDALS_TO_ADVANCE,
 } from './state.js';
 import { buildCarSpec } from './car.js';
 import { createRenderer, createStudioScene, disposeModel } from './render3d.js';
@@ -26,6 +26,7 @@ const PLAYER_NAME = 'Toi';
 let pendingOpponent = null;
 let pendingQuick = false;
 let gauntlet = null; // { fought, coins } quand le Grand Combat est en cours
+let pendingBet = null; // { a, b, choice, amount, oddsA, oddsB } pendant un pari
 
 function show(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
@@ -198,6 +199,115 @@ function nextUnbeaten() {
   return makeRoster(state.stage).find(o => !state.medals.includes(o.idx)) || null;
 }
 
+// ---------- les Paris : deux machines s'affrontent, on mise ----------
+let betPair = null;
+let betAmount = 25;
+
+function machineScore(m) {
+  const s = computeCarStats(m.loadout);
+  return Math.max(1, s.hp * m.statBoost * Math.max(1, s.atk * m.dmgBoost));
+}
+function betOdds(pair) {
+  const sA = machineScore(pair.a), sB = machineScore(pair.b);
+  const pA = sA / (sA + sB);
+  const clamp = x => Math.max(1.15, Math.min(5, x));
+  return { a: clamp(0.9 / pA), b: clamp(0.9 / (1 - pA)) };
+}
+
+function openBets(fresh = true) {
+  if (fresh) {
+    betPair = {
+      a: makeOpponent(state.stage, Math.floor(Math.random() * ROSTER_SIZE), true),
+      b: makeOpponent(state.stage, Math.floor(Math.random() * ROSTER_SIZE) + 20, true),
+    };
+  }
+  const odds = betOdds(betPair);
+  document.getElementById('bet-img-a').src = carSnapshot(betPair.a.loadout, { dir: 1, w: 360, h: 220 });
+  document.getElementById('bet-img-b').src = carSnapshot(betPair.b.loadout, { dir: -1, w: 360, h: 220 });
+  document.getElementById('bet-name-a').textContent = betPair.a.name;
+  document.getElementById('bet-name-b').textContent = betPair.b.name;
+  document.getElementById('bet-stats-a').textContent = statLine(betPair.a.loadout, betPair.a.statBoost);
+  document.getElementById('bet-stats-b').textContent = statLine(betPair.b.loadout, betPair.b.statBoost);
+  document.getElementById('bet-odds-a').textContent = 'cote ×' + odds.a.toFixed(1);
+  document.getElementById('bet-odds-b').textContent = 'cote ×' + odds.b.toFixed(1);
+  betPair.odds = odds;
+
+  // mises proposées
+  const amounts = [10, 25, 50, 100, 250];
+  const wrap = document.getElementById('bet-amounts');
+  wrap.innerHTML = '';
+  if (betAmount > state.coins) betAmount = amounts.find(a => a <= state.coins) || 0;
+  for (const a of amounts) {
+    const chip = document.createElement('button');
+    chip.className = 'bet-chip' + (a === betAmount ? ' selected' : '');
+    chip.textContent = a;
+    chip.disabled = a > state.coins;
+    chip.addEventListener('click', () => { sfxClick(); betAmount = a; openBets(false); });
+    wrap.appendChild(chip);
+  }
+  const can = betAmount > 0 && betAmount <= state.coins;
+  document.getElementById('btn-bet-a').disabled = !can;
+  document.getElementById('btn-bet-b').disabled = !can;
+  document.getElementById('btn-bet-a').textContent = `Parier ${betAmount} sur A`;
+  document.getElementById('btn-bet-b').textContent = `Parier ${betAmount} sur B`;
+  show('screen-bet');
+}
+
+function placeBet(choice) {
+  if (betAmount <= 0 || betAmount > state.coins) return;
+  state.coins -= betAmount;
+  save();
+  pendingQuick = true; // le bouton « Continuer » du résultat ramène au garage
+  pendingBet = { ...betPair, choice, amount: betAmount, odds: betPair.odds };
+  show('screen-battle');
+  document.getElementById('hud-name-l').textContent = 'A · ' + pendingBet.a.name;
+  document.getElementById('hud-name-r').textContent = 'B · ' + pendingBet.b.name;
+  document.getElementById('battle-msg').classList.add('hidden');
+  startBattle({
+    playerLoadout: pendingBet.a.loadout,
+    playerBoost: pendingBet.a.statBoost,
+    playerDmgBoost: pendingBet.a.dmgBoost,
+    opponent: pendingBet.b,
+    copilot: null,
+    themeIndex: leagueIndex(state.stage),
+    onEnd: onBetEnd,
+  });
+}
+
+function onBetEnd(result) {
+  const bet = pendingBet;
+  pendingBet = null;
+  const winnerA = result.win; // "win" = la machine de gauche (A) a gagné
+  const won = (bet.choice === 'a') === winnerA;
+  const winnerName = winnerA ? bet.a.name : bet.b.name;
+  const title = document.getElementById('result-title');
+  const btnNext = document.getElementById('btn-next');
+  document.getElementById('reward-part').classList.add('hidden');
+  document.getElementById('result-league').classList.add('hidden');
+  document.getElementById('result-progress').classList.add('hidden');
+  if (won) {
+    const payout = Math.round(bet.amount * (bet.choice === 'a' ? bet.odds.a : bet.odds.b));
+    state.coins += payout;
+    save();
+    sfxWin();
+    title.textContent = 'PARI GAGNÉ !';
+    title.className = 'result-title win';
+    document.getElementById('result-sub').textContent = `${winnerName} l'emporte — tu empoches ${payout} pièces !`;
+    countUp(document.getElementById('reward-coins'), payout);
+  } else {
+    sfxLose();
+    title.textContent = 'PARI PERDU…';
+    title.className = 'result-title lose';
+    document.getElementById('result-sub').textContent = `${winnerName} l'emporte. Mise perdue (${bet.amount} pièces).`;
+    document.getElementById('reward-coins').textContent = '-' + bet.amount;
+  }
+  btnNext.textContent = 'Nouveau pari';
+  btnNext.classList.remove('hidden');
+  btnNext.dataset.mode = 'bet';
+  show('screen-result');
+  if (won) confetti();
+}
+
 // ---------- déroulé d'une partie ----------
 function gotoVs(quick, opponent = null) {
   pendingQuick = quick;
@@ -220,6 +330,7 @@ function launchBattle() {
   document.getElementById('battle-msg').classList.add('hidden');
   startBattle({
     playerLoadout: buildLoadout(),
+    playerBoost: prestigeBoost(),
     opponent: pendingOpponent,
     copilot: state.copilot,
     themeIndex: leagueIndex(state.stage),
@@ -292,14 +403,19 @@ function onBattleEnd(result) {
     }
     haptic('HEAVY');
     if (r.promoted) sfxPromote(); else { sfxWin(); if (r.medal) sfxMedal(); }
-    title.textContent = r.promoted ? 'PROMU !' : 'VICTOIRE !';
+    title.textContent = r.prestiged ? 'PRESTIGE !' : (r.promoted ? 'PROMU !' : 'VICTOIRE !');
     title.className = 'result-title win';
     const bits = [`${beatenName} est K.O. !`];
     if (wasBoss) bits.push(`Boss vaincu : +${bossBonus} pièces bonus !`);
     if (gauntlet && gauntlet.fought > 0) bits.push(`Série du Grand Combat : ${gauntlet.fought + 1} victoires !`);
     if (r.medal) bits.push('Médaille prise !');
-    if (r.promoted) bits.push(`Bienvenue à l'étape ${state.stage} !`);
+    if (r.prestiged) bits.push(`Championnat terminé ! Retour à l'étape 1 avec +4% de puissance permanente — les adversaires seront bien plus féroces.`);
+    else if (r.promoted) bits.push(`Bienvenue à l'étape ${state.stage} !`);
     document.getElementById('result-sub').textContent = bits.join(' ');
+    if (r.prestiged) {
+      leagueEl.textContent = `PRESTIGE ⭐${state.prestige} — LÉGENDE VIVANTE !`;
+      leagueEl.classList.remove('hidden');
+    }
     if (!pendingQuick && !r.promoted) {
       progressEl.textContent = `🏅 ${state.medals.length}/${MEDALS_TO_ADVANCE} médailles vers la promotion`;
       progressEl.classList.remove('hidden');
@@ -308,6 +424,7 @@ function onBattleEnd(result) {
         pendingOpponent = next;
         btnNext.textContent = `⚔ Adversaire suivant : ${next.name}`;
         btnNext.classList.remove('hidden');
+        btnNext.dataset.mode = '';
       }
     }
     const leagueUp = r.leagueUp || (gauntlet && gauntlet.leagueUp);
@@ -348,6 +465,7 @@ function onBattleEnd(result) {
     if (!gauntlet) {
       btnNext.textContent = '🔄 Revanche !';
       btnNext.classList.remove('hidden');
+      btnNext.dataset.mode = '';
     }
     show('screen-result');
   }
@@ -390,11 +508,17 @@ function boot() {
     if (!pendingQuick) { renderRoster(); renderGarage(); show('screen-roster'); }
     else { renderGarage(); show('screen-garage'); }
   });
-  // « Adversaire suivant » après une victoire / « Revanche » après une défaite
-  document.getElementById('btn-next').addEventListener('click', () => {
+  // « Adversaire suivant » / « Revanche » / « Nouveau pari »
+  document.getElementById('btn-next').addEventListener('click', function () {
     sfxClick();
-    gotoVs(pendingQuick, pendingQuick ? null : pendingOpponent);
+    if (this.dataset.mode === 'bet') openBets();
+    else gotoVs(pendingQuick, pendingQuick ? null : pendingOpponent);
   });
+  document.getElementById('btn-bet').addEventListener('click', () => { sfxClick(); openBets(); });
+  document.getElementById('btn-bet-back').addEventListener('click', () => { sfxClick(); renderGarage(); show('screen-garage'); });
+  document.getElementById('btn-bet-shuffle').addEventListener('click', () => { sfxClick(); openBets(true); });
+  document.getElementById('btn-bet-a').addEventListener('click', () => { sfxClick(); placeBet('a'); });
+  document.getElementById('btn-bet-b').addEventListener('click', () => { sfxClick(); placeBet('b'); });
 
   // halo d'onboarding sur le bouton championnat tant qu'on n'a jamais combattu
   if (state.totalWins === 0) document.getElementById('btn-fight').classList.add('attention');
@@ -418,4 +542,4 @@ function boot() {
 boot();
 
 // utile pour les tests automatisés et la génération d'icônes
-window.__MAKS__ = { state, carSnapshot, buildLoadout };
+window.__MAKS__ = { state, carSnapshot, buildLoadout, winRewards };

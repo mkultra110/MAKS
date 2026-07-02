@@ -39,6 +39,11 @@ pas de minuteurs d'attente, pas de pubs, 100 % jouable hors-ligne.
 - L'écran championnat **code la difficulté par couleur** (vert = à ta portée,
   rouge = costaud) — choisis tes cibles, il ne faut que 8 médailles sur 14.
 - **Roues cloutées** : elles mordent l'adversaire au contact (dégâts continus).
+- **Les Paris** 🎲 : regarde deux machines s'affronter et mise sur le vainqueur —
+  les cotes (×1.1 à ×5) sont calculées sur le rapport de puissance réel.
+- **Prestige** ⭐ : après l'étape 24, le championnat recommence à l'étape 1 avec
+  +4% de puissance permanente par prestige… et des adversaires bien plus féroces
+  (+35% par prestige). Grosse prime de pièces à chaque tour complet.
 - **Progression** : victoires → pièces d'or + nouvelles pièces (rareté 1★ à 5★),
   amélioration (niveau max = 1 + 5×étoiles), recyclage.
 - **Sauvegarde automatique** en local.

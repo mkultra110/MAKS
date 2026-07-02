@@ -201,7 +201,8 @@ export function renderGarage() {
   document.getElementById('coins').textContent = state.coins;
   const li = leagueIndex(state.stage);
   const chip = document.getElementById('stage-label');
-  chip.textContent = `${LEAGUES[li].name} · Ét. ${state.stage}`;
+  const prestige = state.prestige > 0 ? `⭐${state.prestige} · ` : '';
+  chip.textContent = `${prestige}${LEAGUES[li].name} · Ét. ${state.stage}`;
   chip.parentElement.querySelector('.ic').style.color = LEAGUES[li].color;
   document.getElementById('stage-fill').style.width =
     (state.medals.length / MEDALS_TO_ADVANCE * 100) + '%';

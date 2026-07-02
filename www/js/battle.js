@@ -206,7 +206,7 @@ function flashLight(battle, x2, y2, intensity = 60) {
 
 // ---------- combat ----------
 export function startBattle(config) {
-  const { playerLoadout, opponent, onEnd, copilot = null, themeIndex = 0 } = config;
+  const { playerLoadout, opponent, onEnd, copilot = null, themeIndex = 0, playerBoost = 1, playerDmgBoost = null } = config;
   const canvas = document.getElementById('battle-canvas');
   // antialias inutile : le rendu passe par l'EffectComposer (le MSAA ne s'applique pas)
   if (!renderer) renderer = createRenderer(canvas, { antialias: false });
@@ -219,7 +219,10 @@ export function startBattle(config) {
   const wallR = Bodies.rectangle(ARENA_W + 30, GROUND_Y - 300, 60, 700, { isStatic: true, label: 'wall:R' });
   Composite.add(engine.world, [ground, wallL, wallR]);
 
-  const me = makeCar(engine, playerLoadout, { x: 390, dir: 1, team: 0, name: 'Toi', copilot });
+  const me = makeCar(engine, playerLoadout, {
+    x: 390, dir: 1, team: 0, name: 'Toi', copilot,
+    statBoost: playerBoost, dmgBoost: playerDmgBoost ?? playerBoost,
+  });
   const foe = makeCar(engine, opponent.loadout, {
     x: ARENA_W - 390, dir: -1, team: 1, name: opponent.name,
     statBoost: opponent.statBoost, dmgBoost: opponent.dmgBoost,

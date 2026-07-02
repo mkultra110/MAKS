@@ -355,6 +355,35 @@ body {
   animation: msg-pop .35s cubic-bezier(.2,1.5,.4,1);
 }
 
+/* ---------- paris ---------- */
+#screen-bet { justify-content: flex-start; }
+.bet-wrap { display: flex; align-items: center; gap: 4px; padding: 6px 14px; }
+.vs-badge.small { font-size: 26px; margin: 0; flex-shrink: 0; }
+.bet-card {
+  flex: 1; min-width: 0; text-align: center;
+  background: linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.03));
+  border: 1px solid var(--line); border-radius: 18px; padding: 10px 8px;
+}
+.bet-card.a { box-shadow: 0 0 0 2px rgba(79,215,255,.5); }
+.bet-card.b { box-shadow: 0 0 0 2px rgba(255,93,122,.5); }
+.bet-card img { width: 100%; height: 96px; object-fit: contain; }
+.bet-name { font-weight: 800; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bet-stats { font-size: 11.5px; color: var(--muted); font-weight: 700; }
+.bet-odds { margin-top: 6px; font-size: 19px; font-weight: 800; color: var(--gold); }
+.bet-amounts { display: flex; gap: 8px; justify-content: center; padding: 12px 14px 4px; }
+.bet-chip {
+  min-width: 64px; padding: 9px 0; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--text); font-family: inherit;
+  font-weight: 800; font-size: 15px;
+}
+.bet-chip.selected { background: linear-gradient(180deg, #ffd23e, #ff9d1b); color: #4a2800; border-color: transparent; }
+.bet-chip:disabled { opacity: .35; }
+.bet-buttons { display: flex; gap: 10px; padding: 10px 14px 0; }
+.bet-buttons .btn { flex: 1; font-size: 16px; }
+.btn.bet-a { box-shadow: 0 0 0 2px rgba(79,215,255,.5), 0 6px 16px rgba(0,0,0,.35); }
+.btn.bet-b { box-shadow: 0 0 0 2px rgba(255,93,122,.5), 0 6px 16px rgba(0,0,0,.35); }
+.btn.shuffle { margin: 12px auto 0; display: block; font-size: 14px; padding: 10px 20px; }
+
 /* ---------- toast de combat ---------- */
 .battle-toast {
   position: absolute; top: 22%; left: 0; right: 0; text-align: center;

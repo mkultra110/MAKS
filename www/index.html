@@ -138,7 +138,8 @@
     <div id="inventory" class="inventory"></div>
 
     <footer class="actions">
-      <button id="btn-quick" class="btn secondary"><svg class="ic"><use href="#i-dice"/></svg> Combat rapide</button>
+      <button id="btn-quick" class="btn secondary"><svg class="ic"><use href="#i-dice"/></svg> Rapide</button>
+      <button id="btn-bet" class="btn secondary"><svg class="ic"><use href="#i-coin"/></svg> Paris</button>
       <button id="btn-fight" class="btn primary"><svg class="ic"><use href="#i-trophy"/></svg> CHAMPIONNAT</button>
     </footer>
   </section>
@@ -192,6 +193,38 @@
       <button id="btn-gauntlet" class="btn gold"><svg class="ic"><use href="#i-belt"/></svg> GRAND COMBAT</button>
       <div class="gauntlet-rules">Enchaîne les adversaires restants sans pause — une défaite met fin à la série !</div>
     </footer>
+  </section>
+
+  <!-- ÉCRAN PARIS : deux machines de joueurs s'affrontent, mise sur le vainqueur -->
+  <section id="screen-bet" class="screen hidden">
+    <header class="roster-head">
+      <button id="btn-bet-back" class="close-round"><svg class="ic"><use href="#i-back"/></svg></button>
+      <div>
+        <div class="roster-title">Les Paris</div>
+        <div class="roster-sub">Deux machines s'affrontent — mise sur le vainqueur !</div>
+      </div>
+    </header>
+    <div class="bet-wrap">
+      <div class="bet-card a">
+        <img id="bet-img-a" alt="">
+        <div id="bet-name-a" class="bet-name"></div>
+        <div id="bet-stats-a" class="bet-stats"></div>
+        <div id="bet-odds-a" class="bet-odds"></div>
+      </div>
+      <div class="vs-badge small">VS</div>
+      <div class="bet-card b">
+        <img id="bet-img-b" alt="">
+        <div id="bet-name-b" class="bet-name"></div>
+        <div id="bet-stats-b" class="bet-stats"></div>
+        <div id="bet-odds-b" class="bet-odds"></div>
+      </div>
+    </div>
+    <div class="bet-amounts" id="bet-amounts"></div>
+    <div class="bet-buttons">
+      <button id="btn-bet-a" class="btn secondary bet-a">Parier A</button>
+      <button id="btn-bet-b" class="btn secondary bet-b">Parier B</button>
+    </div>
+    <button id="btn-bet-shuffle" class="btn secondary shuffle"><svg class="ic"><use href="#i-dice"/></svg> Autre affiche</button>
   </section>
 
   <!-- ÉCRAN VS -->
