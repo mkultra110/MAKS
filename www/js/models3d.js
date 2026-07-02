@@ -89,6 +89,13 @@ function weaponModel(wp) {
     const hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.36, r * 0.36, 0.12, 16), METAL_DARK());
     hub.rotation.x = Math.PI / 2;
     disc.add(hub);
+    // disque de flou de rotation
+    const blur = new THREE.Mesh(
+      new THREE.CircleGeometry(r * 1.28, 24),
+      new THREE.MeshBasicMaterial({ color: 0xd8dce8, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+    );
+    blur.userData.noShadow = true;
+    g.add(blur);
     g.add(disc);
     anim.spin.push(disc);
   } else if (wp.type === 'blade' || wp.type === 'stinger') {
@@ -158,10 +165,25 @@ function weaponModel(wp) {
       barrels.add(barrel);
     }
     g.add(barrels);
+    // disque de flou des canons
+    const blur = new THREE.Mesh(
+      new THREE.CircleGeometry(0.1, 16),
+      new THREE.MeshBasicMaterial({ color: 0xd8dce8, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+    );
+    blur.rotation.y = Math.PI / 2;
+    blur.position.x = w * 0.66;
+    blur.userData.noShadow = true;
+    g.add(blur);
     anim.spin.push(barrels); anim.axis = 'x';
   }
   g.userData.anim = anim;
   return g;
+}
+
+// Pulsation de la lentille laser (matériau partagé : un seul appel par frame).
+export function pulseLaserLens(t) {
+  const m = MATS['laserLens'];
+  if (m) m.emissiveIntensity = 1.9 + Math.sin(t * 7) * 0.9;
 }
 
 // ---------- roue ----------
@@ -499,11 +521,11 @@ function bannerTexture(text, bg, fg) {
 }
 
 // ---------- arène ----------
-function groundTexture() {
+function groundTexture(color = '#2b2b50') {
   const c = document.createElement('canvas');
   c.width = c.height = 512;
   const x = c.getContext('2d');
-  x.fillStyle = '#2b2b50'; x.fillRect(0, 0, 512, 512);
+  x.fillStyle = color; x.fillRect(0, 0, 512, 512);
   // dalles
   x.strokeStyle = 'rgba(255,255,255,.05)'; x.lineWidth = 2;
   for (let i = 0; i <= 4; i++) {
@@ -522,22 +544,39 @@ function groundTexture() {
   return tex;
 }
 
-export function skyTexture() {
+// Ambiances d'arène : une par ligue (Bois → Légende).
+export const ARENA_THEMES = [
+  { name: 'Bois',    sky: ['#0e0e28', '#232055', '#4a2a68', '#7a3a70'], ground: 0x2b2b50, track: 0x33335e, build: 0x191736, moon: 0xffe6b0, fog: 0x191636, stars: false },
+  { name: 'Bronze',  sky: ['#1a0e20', '#48204a', '#8a3a48', '#c46a3a'], ground: 0x3a2b40, track: 0x4a3350, build: 0x241428, moon: 0xffc078, fog: 0x2a1830, stars: false },
+  { name: 'Argent',  sky: ['#0a1226', '#16304e', '#2a5578', '#5e8aa8'], ground: 0x26364e, track: 0x2e4260, build: 0x101c2c, moon: 0xf0f6ff, fog: 0x14243a, stars: true  },
+  { name: 'Or',      sky: ['#160f08', '#3e2c12', '#7a561e', '#b8862e'], ground: 0x3c3020, track: 0x4a3c28, build: 0x241a0e, moon: 0xffe9a0, fog: 0x2a2012, stars: false },
+  { name: 'Diamant', sky: ['#0a0a2a', '#1a1a5e', '#2a3a8e', '#3a6ab0'], ground: 0x1e2450, track: 0x283060, build: 0x10123a, moon: 0x9fe8ff, fog: 0x141a44, stars: true  },
+  { name: 'Légende', sky: ['#140508', '#3a0a14', '#6e1420', '#a02430'], ground: 0x36141c, track: 0x421a24, build: 0x1e080e, moon: 0xff8a70, fog: 0x260a12, stars: true  },
+];
+
+export function skyTexture(theme = ARENA_THEMES[0]) {
   const c = document.createElement('canvas');
-  c.width = 32; c.height = 256;
+  c.width = 64; c.height = 256;
   const x = c.getContext('2d');
   const g = x.createLinearGradient(0, 0, 0, 256);
-  g.addColorStop(0, '#0e0e28');
-  g.addColorStop(0.45, '#232055');
-  g.addColorStop(0.75, '#4a2a68');
-  g.addColorStop(1, '#7a3a70');
-  x.fillStyle = g; x.fillRect(0, 0, 32, 256);
+  g.addColorStop(0, theme.sky[0]);
+  g.addColorStop(0.45, theme.sky[1]);
+  g.addColorStop(0.75, theme.sky[2]);
+  g.addColorStop(1, theme.sky[3]);
+  x.fillStyle = g; x.fillRect(0, 0, 64, 256);
+  if (theme.stars) {
+    for (let i = 0; i < 90; i++) {
+      x.fillStyle = `rgba(255,255,255,${0.25 + Math.random() * 0.6})`;
+      const sy = Math.random() * 150;
+      x.fillRect(Math.random() * 64, sy, 1, 1);
+    }
+  }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
-export function createArena(scene, arenaW) {
+export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {
   const W = arenaW * S; // largeur de l'arène en unités 3D
   const env = new THREE.Group();
   scene.add(env);
@@ -545,7 +584,10 @@ export function createArena(scene, arenaW) {
   // sol
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(W * 3, 40),
-    new THREE.MeshStandardMaterial({ map: groundTexture(), roughness: 0.92, metalness: 0.05 })
+    new THREE.MeshStandardMaterial({
+      map: groundTexture('#' + theme.ground.toString(16).padStart(6, '0')),
+      roughness: 0.92, metalness: 0.05,
+    })
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(0, 0, 0);
@@ -555,7 +597,7 @@ export function createArena(scene, arenaW) {
   // bande centrale de combat
   const track = new THREE.Mesh(
     new THREE.PlaneGeometry(W, 6),
-    new THREE.MeshStandardMaterial({ color: 0x33335e, roughness: 0.85 })
+    new THREE.MeshStandardMaterial({ color: theme.track, roughness: 0.85 })
   );
   track.rotation.x = -Math.PI / 2;
   track.position.y = 0.005;
@@ -631,7 +673,7 @@ export function createArena(scene, arenaW) {
   env.userData.crowd = { mesh: crowd, data: fanData, dummy };
 
   // gratte-ciels lointains (silhouettes)
-  const bMat = new THREE.MeshStandardMaterial({ color: 0x191736, roughness: 1 });
+  const bMat = new THREE.MeshStandardMaterial({ color: theme.build, roughness: 1 });
   const winMat = new THREE.MeshBasicMaterial({ color: 0xffd88a, transparent: true, opacity: 0.7 });
   let rndSeed = 7;
   const rnd = () => { rndSeed = (rndSeed * 16807) % 2147483647; return rndSeed / 2147483647; };
@@ -653,7 +695,7 @@ export function createArena(scene, arenaW) {
   // lune
   const moon = new THREE.Mesh(
     new THREE.SphereGeometry(1.6, 20, 16),
-    new THREE.MeshBasicMaterial({ color: 0xffe6b0 })
+    new THREE.MeshBasicMaterial({ color: theme.moon })
   );
   moon.position.set(W * 0.3, 13, -30);
   env.add(moon);

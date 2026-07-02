@@ -2,11 +2,13 @@
 import * as THREE from 'three';
 import { buildCarSpec } from './car.js';
 import { copilotMods } from './state.js';
-import { COPILOTS } from './data.js';
-import { createRenderer } from './render3d.js';
-import { createCarModel, createArena, createDeathWall, skyTexture, S } from './models3d.js';
-import { sfxHit, sfxBoom, sfxLaser, sfxShot, sfxCount, sfxGo, sfxSiren } from './sfx.js';
-import { disposeModel } from './render3d.js';
+import { COPILOTS, WHEELS, partMult } from './data.js';
+import { createRenderer, disposeModel } from './render3d.js';
+import { createCarModel, createArena, createDeathWall, skyTexture, pulseLaserLens, ARENA_THEMES, S } from './models3d.js';
+import {
+  sfxHit, sfxBoom, sfxLaser, sfxShot, sfxCount, sfxGo, sfxSiren,
+  startBattleAudio, stopBattleAudio, setEngineSpeed, crowdExcite,
+} from './sfx.js';
 import { EffectComposer } from './lib/postprocessing/EffectComposer.js';
 import { RenderPass } from './lib/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from './lib/postprocessing/UnrealBloomPass.js';
@@ -50,11 +52,11 @@ function makeCar(engine, lo, opts) {
   const centerOffset = { x: x - chassis.position.x, y: y - chassis.position.y };
 
   const wheels = [], axles = [];
-  for (const w of spec.wheels) {
+  spec.wheels.forEach((w, wi) => {
     const wheel = Bodies.circle(x + w.ox * dir, y + w.oy, w.r, {
       collisionFilter: { group },
       friction: 1.1, frictionStatic: 8, restitution: 0.05,
-      density: 0.0025, label: `wheel:${team}`,
+      density: 0.0025, label: `wheel:${team}:${wi}`,
     });
     axles.push(Constraint.create({
       bodyA: chassis,
@@ -62,8 +64,12 @@ function makeCar(engine, lo, opts) {
       bodyB: wheel,
       stiffness: 0.9, length: 0,
     }));
-    wheels.push({ body: wheel, speed: w.speed, r: w.r });
-  }
+    wheels.push({
+      body: wheel, speed: w.speed, r: w.r,
+      contactDps: (WHEELS[w.type].contactDps || 0) * partMult(w.part),
+      contactLast: 0,
+    });
+  });
   Composite.add(engine.world, [chassis, ...wheels.map(w => w.body), ...axles]);
 
   const maxHp = Math.round(spec.stats.hp * statBoost * mods.hp);
@@ -99,10 +105,11 @@ function worldPoint(car, lx, ly) {
 }
 
 // ---------- scène 3D ----------
-function buildScene(battle) {
+function buildScene(battle, themeIndex = 0) {
+  const theme = ARENA_THEMES[Math.min(themeIndex, ARENA_THEMES.length - 1)];
   const scene = new THREE.Scene();
-  scene.background = skyTexture();
-  scene.fog = new THREE.Fog(0x191636, 55, 140);
+  scene.background = skyTexture(theme);
+  scene.fog = new THREE.Fog(theme.fog, 55, 140);
 
   const hemi = new THREE.HemisphereLight(0xcfd6ff, 0x241a38, 0.75);
   scene.add(hemi);
@@ -118,7 +125,7 @@ function buildScene(battle) {
   rim.position.set(-8, 6, -9);
   scene.add(rim);
 
-  battle.env = createArena(scene, ARENA_W);
+  battle.env = createArena(scene, ARENA_W, theme);
 
   // véhicules
   for (const car of battle.cars) {
@@ -199,7 +206,7 @@ function flashLight(battle, x2, y2, intensity = 60) {
 
 // ---------- combat ----------
 export function startBattle(config) {
-  const { playerLoadout, opponent, onEnd, copilot = null } = config;
+  const { playerLoadout, opponent, onEnd, copilot = null, themeIndex = 0 } = config;
   const canvas = document.getElementById('battle-canvas');
   // antialias inutile : le rendu passe par l'EffectComposer (le MSAA ne s'applique pas)
   if (!renderer) renderer = createRenderer(canvas, { antialias: false });
@@ -228,11 +235,12 @@ export function startBattle(config) {
     overlay: document.getElementById('battle-overlay'),
   };
   current = battle;
-  buildScene(battle);
+  buildScene(battle, themeIndex);
 
   Events.on(engine, 'collisionActive', ev => {
     for (const pair of ev.pairs) {
       handleMeleePair(battle, pair);
+      handleSpikePair(battle, pair); // roues cloutées : dégâts de contact
       handleWallPair(battle, pair); // un véhicule déjà collé au mur doit mourir aussi
     }
   });
@@ -262,6 +270,7 @@ export function stopBattle() {
   if (!current) return;
   cancelAnimationFrame(current.raf);
   window.removeEventListener('resize', current.onResize);
+  stopBattleAudio();
   Events.off(current.engine);
   Composite.clear(current.engine.world, false);
   Engine.clear(current.engine);
@@ -311,6 +320,26 @@ function handleMeleePair(battle, pair) {
       }
       sfxHit();
     }
+  }
+}
+
+// Roues cloutées : elles mordent tout ce qu'elles touchent chez l'adversaire.
+function handleSpikePair(battle, pair) {
+  if (battle.time < 0 || battle.finished) return;
+  for (const [a, b] of [[pair.bodyA, pair.bodyB], [pair.bodyB, pair.bodyA]]) {
+    const m = a.label && a.label.match(/^wheel:(\d):(\d+)$/);
+    if (!m) continue;
+    const owner = battle.cars[+m[1]];
+    const wheel = owner && owner.wheels[+m[2]];
+    if (!wheel || !wheel.contactDps) continue;
+    const target = carOfLabel(battle, b.label);
+    if (!target || target === owner || target.dead) continue;
+    if (battle.time - wheel.contactLast < MELEE_TICK) continue;
+    wheel.contactLast = battle.time;
+    const at = pair.collision.supports[0] || target.chassis.position;
+    applyDamage(battle, target, wheel.contactDps * MELEE_TICK * owner.dmgMult, at);
+    burst(battle, at.x, at.y, target.z, 4, 0xd8dce8, { speed: 2.6, size: 0.08, life: 0.3 });
+    sfxHit();
   }
 }
 
@@ -471,6 +500,7 @@ function step(battle, dt, onEnd) {
   if (prev < 0) {
     showMsg(battle, 'MIAOU !');
     sfxGo();
+    startBattleAudio(); // foule + moteurs en continu
     battle.shake = 6;
     for (const car of cars) {
       const back = worldPoint(car, -car.spec.body.w / 2 - 10, car.spec.body.h / 2);
@@ -530,6 +560,9 @@ function step(battle, dt, onEnd) {
   }
   updateEffects(battle, dt);
   updateHud(battle, remaining);
+  // le moteur ronronne selon la vitesse du joueur, la foule s'excite à la fin
+  setEngineSpeed(Math.abs(cars[0].chassis.velocity.x) + Math.abs(cars[1].chassis.velocity.x));
+  crowdExcite(battle.finished ? 1 : (battle.wallsDeadly ? 0.5 : 0));
 }
 
 // Capacités automatiques des co-pilotes (une fois par combat).
@@ -669,11 +702,31 @@ function fireProjectile(battle, owner, from, to, opt) {
     mesh.add(flame);
     mesh.userData.flame = flame;
   } else {
+    // balle traçante : sphère étirée dans le sens du tir
     mesh = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8),
-      new THREE.MeshBasicMaterial({ color: 0xffe080 }));
+      new THREE.MeshBasicMaterial({ color: 0xffe080, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
+    mesh.scale.set(3.4, 0.55, 0.55);
   }
   battle.scene.add(mesh);
-  battle.projectiles.push({ body, mesh, owner, type: opt.type, dmg: opt.dmg, z: owner.z, hit: false, life: 4, smoke: 0 });
+
+  // traînée de roquette : ligne des dernières positions
+  let trail = null;
+  if (opt.type === 'rocket') {
+    const N = 16;
+    const positions = new Float32Array(N * 3);
+    const x3 = to3x(from.x), y3 = to3y(from.y);
+    for (let i = 0; i < N; i++) {
+      positions[i * 3] = x3; positions[i * 3 + 1] = y3; positions[i * 3 + 2] = owner.z;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    trail = new THREE.Line(geo, new THREE.LineBasicMaterial({
+      color: 0xffa050, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    battle.scene.add(trail);
+  }
+
+  battle.projectiles.push({ body, mesh, trail, owner, type: opt.type, dmg: opt.dmg, z: owner.z, hit: false, life: 4, smoke: 0 });
 }
 
 function updateEffects(battle, dt) {
@@ -691,6 +744,11 @@ function updateEffects(battle, dt) {
       p.removed = true;
       Composite.remove(battle.engine.world, p.body);
       battle.scene.remove(p.mesh);
+      if (p.trail) {
+        battle.scene.remove(p.trail);
+        p.trail.geometry.dispose();
+        p.trail.material.dispose();
+      }
     }
   }
   battle.projectiles = battle.projectiles.filter(p => !p.removed);
@@ -839,12 +897,24 @@ function render(battle, t, dt) {
   for (const p of battle.projectiles) {
     if (p.removed || p.hit) continue;
     p.mesh.position.set(to3x(p.body.position.x), to3y(p.body.position.y), p.z);
+    p.mesh.rotation.z = -Math.atan2(p.body.velocity.y, p.body.velocity.x);
     if (p.type === 'rocket') {
-      p.mesh.rotation.z = -Math.atan2(p.body.velocity.y, p.body.velocity.x);
       const f = p.mesh.userData.flame;
       f.scale.setScalar(0.8 + Math.random() * 0.5);
+      // fait glisser la traînée
+      const pos = p.trail.geometry.attributes.position;
+      for (let i = pos.count - 1; i > 0; i--) {
+        pos.array[i * 3] = pos.array[(i - 1) * 3];
+        pos.array[i * 3 + 1] = pos.array[(i - 1) * 3 + 1];
+        pos.array[i * 3 + 2] = pos.array[(i - 1) * 3 + 2];
+      }
+      pos.array[0] = p.mesh.position.x;
+      pos.array[1] = p.mesh.position.y;
+      pos.array[2] = p.mesh.position.z;
+      pos.needsUpdate = true;
     }
   }
+  pulseLaserLens(t);
 
   // murs (couleur émissive posée une seule fois au passage en mode mortel)
   battle.wall3L.position.x = to3x(battle.wallL.position.x + 30);

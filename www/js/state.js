@@ -189,11 +189,18 @@ export function removePart(part) {
 // leur nom et leur avatar sont reproductibles (comme des builds d'autres joueurs).
 const AVATAR_COLORS = [0xffd9a0, 0xff9a3e, 0xb0b8d0, 0x8f7bff, 0xf4a9c8, 0x9adf9f, 0x7ad4e0, 0xd9c08a];
 
+// Les étapes qui précèdent un changement de ligue se terminent par un BOSS
+// (le 14e adversaire) : plus fort, mais sa victoire rapporte gros.
+export function isBossStage(stage) {
+  return leagueIndex(stage + 1) > leagueIndex(stage);
+}
+
 export function makeOpponent(stage, round, quick = false) {
   const seed = quick ? (Date.now() & 0x7fffffff) : (stage * 977 + round * 131 + 7);
   const rng = seededRng(seed);
-  const power = 1 + (stage - 1) * 0.13 + round * 0.03;
-  const mkLevel = () => Math.max(1, Math.round(1 + (stage - 1) * 0.6 + rng() * 2 - (quick ? 1 : 0)));
+  const boss = !quick && round === ROSTER_SIZE - 1 && isBossStage(stage);
+  const power = (1 + (stage - 1) * 0.13 + round * 0.03) * (boss ? 1.12 : 1);
+  const mkLevel = () => Math.max(1, Math.round(1 + (stage - 1) * 0.6 + rng() * 2 - (quick ? 1 : 0)) + (boss ? 1 : 0));
 
   const bodyType = pick(rng, Object.keys(BODIES));
   const body = newPart('body', bodyType, rollStars(rng, stage), mkLevel());
@@ -224,8 +231,10 @@ export function makeOpponent(stage, round, quick = false) {
     }
   }
   const lo = { body, wheels, weapons, gadgets };
+  const baseName = quick ? pick(rng, CAT_NAMES) : CAT_NAMES[(stage * 3 + round * 5) % CAT_NAMES.length];
   return {
-    name: quick ? pick(rng, CAT_NAMES) : CAT_NAMES[(stage * 3 + round * 5) % CAT_NAMES.length],
+    name: boss ? `👑 ${baseName} le Champion` : baseName,
+    boss,
     avatar: AVATAR_COLORS[Math.floor(rng() * AVATAR_COLORS.length)],
     idx: quick ? null : round,
     loadout: lo,

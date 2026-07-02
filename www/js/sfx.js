@@ -109,6 +109,35 @@ export function sfxLose() {
   });
 }
 
+// ---- Boucles continues du combat : rumeur de foule + ronron moteur ----
+let loops = null;
+export function startBattleAudio() {
+  const c = ac(); if (!c || loops) return;
+  const crowdSrc = noise(c, 2.5);
+  crowdSrc.loop = true;
+  const cf = c.createBiquadFilter(); cf.type = 'lowpass'; cf.frequency.value = 420;
+  const cg = c.createGain(); cg.gain.value = 0.028;
+  crowdSrc.connect(cf).connect(cg).connect(c.destination);
+  crowdSrc.start();
+  const eng = c.createOscillator(); eng.type = 'sawtooth'; eng.frequency.value = 70;
+  const ef = c.createBiquadFilter(); ef.type = 'lowpass'; ef.frequency.value = 240;
+  const eg = c.createGain(); eg.gain.value = 0.016;
+  eng.connect(ef).connect(eg).connect(c.destination);
+  eng.start();
+  loops = { crowdSrc, cg, eng, eg };
+}
+export function setEngineSpeed(v) {
+  if (loops) loops.eng.frequency.value = 55 + Math.min(28, Math.abs(v)) * 5;
+}
+export function crowdExcite(x) {
+  if (loops) loops.cg.gain.value = 0.028 + x * 0.05;
+}
+export function stopBattleAudio() {
+  if (!loops) return;
+  try { loops.crowdSrc.stop(); loops.eng.stop(); } catch (e) {}
+  loops = null;
+}
+
 // Bip du compte à rebours (3, 2, 1).
 export function sfxCount() {
   const c = ac(); if (!c) return;

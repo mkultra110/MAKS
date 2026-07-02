@@ -32,7 +32,13 @@ pas de minuteurs d'attente, pas de pubs, 100 % jouable hors-ligne.
   suivante. Le **Grand Combat** enchaîne les adversaires restants sans pause pour une
   promotion express — une seule défaite met fin à la série.
 - **Ligues** : Bois → Bronze → Argent → Or → Diamant → Légende, avec primes de pièces
-  et co-pilotes à débloquer.
+  et co-pilotes à débloquer. Chaque ligue a **son ambiance d'arène** (couchant de
+  Bronze, nuit étoilée d'Argent, or crépusculaire, néons de Diamant, enfer de Légende).
+- **Boss de fin de ligue** : la dernière étape avant chaque changement de ligue se
+  termine par un **Champion couronné** 👑, plus fort mais qui paie 50% de plus.
+- L'écran championnat **code la difficulté par couleur** (vert = à ta portée,
+  rouge = costaud) — choisis tes cibles, il ne faut que 8 médailles sur 14.
+- **Roues cloutées** : elles mordent l'adversaire au contact (dégâts continus).
 - **Progression** : victoires → pièces d'or + nouvelles pièces (rareté 1★ à 5★),
   amélioration (niveau max = 1 + 5×étoiles), recyclage.
 - **Sauvegarde automatique** en local.

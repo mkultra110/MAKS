@@ -10,7 +10,7 @@ export const BODIES = {
 
 export const WHEELS = {
   basic:  { name: 'Roue',         hp: 22, r: 21, speed: 1.0  },
-  spiked: { name: 'Roue cloutée', hp: 38, r: 23, speed: 0.9  },
+  spiked: { name: 'Roue cloutée', hp: 38, r: 23, speed: 0.9, contactDps: 8 },
   big:    { name: 'Grande roue',  hp: 28, r: 29, speed: 1.05 },
   tiny:   { name: 'Roulette',     hp: 16, r: 15, speed: 1.28 },
 };
@@ -64,6 +64,7 @@ export function partStats(part) {
            ['Armes', d.weaponSlots], ['Gadgets', d.gadgetSlots]);
   } else if (part.kind === 'wheel') {
     s.push(['PV', Math.round(d.hp * m)], ['Vitesse', 'x' + d.speed.toFixed(2)]);
+    if (d.contactDps) s.push(['Dégâts contact', Math.round(d.contactDps * m) + '/s']);
   } else if (part.kind === 'weapon') {
     if (d.kind === 'melee') s.push(['Dégâts/s', Math.round(d.dps * m)]);
     else s.push(['Dégâts', Math.round(d.dmg * m)], ['Cadence', d.cooldown + 's']);

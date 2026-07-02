@@ -157,10 +157,16 @@ function renderRoster() {
   const list = document.getElementById('roster-list');
   list.innerHTML = '';
   const roster = makeRoster(state.stage);
+  // score du joueur pour situer la difficulté de chaque adversaire
+  const ps = computeCarStats(buildLoadout());
+  const playerScore = Math.max(1, ps.hp * ps.atk);
   for (const opp of roster) {
     const beaten = state.medals.includes(opp.idx);
+    const os = computeCarStats(opp.loadout);
+    const ratio = (os.hp * opp.statBoost * os.atk * opp.dmgBoost) / playerScore;
+    const diff = opp.boss ? 'boss' : (ratio < 0.75 ? 'easy' : (ratio > 1.4 ? 'hard' : ''));
     const el = document.createElement('div');
-    el.className = 'roster-card' + (beaten ? ' beaten' : '');
+    el.className = 'roster-card' + (beaten ? ' beaten' : '') + (diff ? ' ' + diff : '');
     const img = document.createElement('img');
     img.src = avatarThumb(opp.avatar);
     el.appendChild(img);
@@ -216,6 +222,7 @@ function launchBattle() {
     playerLoadout: buildLoadout(),
     opponent: pendingOpponent,
     copilot: state.copilot,
+    themeIndex: leagueIndex(state.stage),
     onEnd: onBattleEnd,
   });
 }
@@ -261,7 +268,15 @@ function onBattleEnd(result) {
   if (result.win) {
     defeatStreak = 0;
     const beatenName = pendingOpponent.name;
+    const wasBoss = !!pendingOpponent.boss;
     const r = winRewards(pendingQuick, pendingOpponent.idx);
+    // le boss de fin de ligue paie 50% de plus
+    let bossBonus = 0;
+    if (wasBoss) {
+      bossBonus = Math.round(r.coins * 0.5);
+      state.coins += bossBonus;
+      save();
+    }
     // Grand Combat : on enchaîne tant qu'on n'est pas promu (ou plus d'adversaires)
     if (gauntlet && !r.promoted) {
       gauntlet.fought++;
@@ -280,6 +295,7 @@ function onBattleEnd(result) {
     title.textContent = r.promoted ? 'PROMU !' : 'VICTOIRE !';
     title.className = 'result-title win';
     const bits = [`${beatenName} est K.O. !`];
+    if (wasBoss) bits.push(`Boss vaincu : +${bossBonus} pièces bonus !`);
     if (gauntlet && gauntlet.fought > 0) bits.push(`Série du Grand Combat : ${gauntlet.fought + 1} victoires !`);
     if (r.medal) bits.push('Médaille prise !');
     if (r.promoted) bits.push(`Bienvenue à l'étape ${state.stage} !`);
@@ -299,7 +315,7 @@ function onBattleEnd(result) {
       leagueEl.textContent = `NOUVELLE LIGUE : ${leagueUp.name.toUpperCase()} ! +${leagueUp.bonus} pièces`;
       leagueEl.classList.remove('hidden');
     }
-    const totalCoins = r.coins + (gauntlet ? gauntlet.coins : 0);
+    const totalCoins = r.coins + bossBonus + (gauntlet ? gauntlet.coins : 0);
     countUp(document.getElementById('reward-coins'), totalCoins);
     const shown = r.part || (r.extraParts && r.extraParts[0]);
     if (shown) {

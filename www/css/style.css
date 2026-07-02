@@ -326,6 +326,17 @@ body {
 .roster-card .rc-name { font-weight: 800; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .roster-card .rc-stats { font-size: 10.5px; color: var(--muted); font-weight: 700; }
 .roster-card .rc-medal { position: absolute; top: -7px; right: -5px; width: 22px; height: 22px; }
+.roster-card::before {
+  content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px;
+  border-radius: 0 2px 2px 0; background: transparent;
+}
+.roster-card.easy::before { background: var(--green); }
+.roster-card.hard::before { background: var(--red); }
+.roster-card.boss {
+  border-color: rgba(255,201,62,.7);
+  background: linear-gradient(180deg, rgba(255,201,62,.16), rgba(255,157,27,.05));
+  box-shadow: 0 0 14px rgba(255,201,62,.15);
+}
 .roster-card.beaten { opacity: .45; }
 .roster-card.beaten::after {
   content: 'BATTU'; position: absolute; right: 8px; bottom: 7px;
