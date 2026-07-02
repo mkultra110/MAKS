@@ -175,6 +175,18 @@ export function sfxSiren() {
   o.start(); o.stop(c.currentTime + 1.15);
 }
 
+// Clang métallique du clash d'armes.
+export function sfxClang() {
+  const c = ac(); if (!c) return;
+  for (const [type, freq] of [['square', 620], ['triangle', 1870]]) {
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.value = freq;
+    env(g, c.currentTime, 0.004, 0.18, 0.18);
+    o.connect(g).connect(c.destination);
+    o.start(); o.stop(c.currentTime + 0.25);
+  }
+}
+
 // Médaille gagnée : double carillon.
 export function sfxMedal() {
   const c = ac(); if (!c) return;

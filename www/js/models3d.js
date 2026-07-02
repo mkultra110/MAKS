@@ -41,6 +41,59 @@ export function roundedBox(w, h, d, r) {
   return geo;
 }
 
+// ---------- silhouettes de châssis : un profil latéral distinct par type ----------
+// x = avant, y = haut ; fractions du volume (bw × bh*1.55), extrudées sur la profondeur.
+const BODY_PROFILES = {
+  classic: (s, w, h) => { // berline à museau plongeant + bulle cabine
+    s.moveTo(-.5 * w, -.28 * h); s.lineTo(-.5 * w, .08 * h); s.lineTo(-.36 * w, .10 * h);
+    s.quadraticCurveTo(-.18 * w, .30 * h, .02 * w, .30 * h);
+    s.quadraticCurveTo(.22 * w, .12 * h, .5 * w, .02 * h);
+    s.lineTo(.5 * w, -.28 * h);
+  },
+  titan: (s, w, h) => { // camion à cabine haute, épaules carrées
+    s.moveTo(-.5 * w, -.30 * h); s.lineTo(-.5 * w, .26 * h); s.lineTo(-.30 * w, .26 * h);
+    s.lineTo(-.26 * w, .38 * h); s.lineTo(.10 * w, .38 * h); s.lineTo(.16 * w, .26 * h);
+    s.lineTo(.44 * w, .22 * h); s.lineTo(.5 * w, -.02 * h); s.lineTo(.5 * w, -.30 * h);
+  },
+  surfer: (s, w, h) => { // goutte d'eau basse et longue
+    s.moveTo(-.5 * w, -.24 * h); s.lineTo(-.48 * w, .02 * h);
+    s.quadraticCurveTo(-.2 * w, .16 * h, .1 * w, .14 * h);
+    s.quadraticCurveTo(.4 * w, .06 * h, .5 * w, -.06 * h);
+    s.lineTo(.5 * w, -.24 * h);
+  },
+  whale: (s, w, h) => { // ventre rond, dos bombé
+    s.moveTo(-.5 * w, -.26 * h);
+    s.quadraticCurveTo(-.52 * w, .18 * h, -.3 * w, .30 * h);
+    s.quadraticCurveTo(.15 * w, .34 * h, .38 * w, .14 * h);
+    s.quadraticCurveTo(.52 * w, -.04 * h, .5 * w, -.26 * h);
+  },
+  pony: (s, w, h) => { // citadine compacte au toit bulle
+    s.moveTo(-.5 * w, -.26 * h); s.lineTo(-.5 * w, .14 * h);
+    s.quadraticCurveTo(-.34 * w, .34 * h, -.02 * w, .34 * h);
+    s.quadraticCurveTo(.3 * w, .20 * h, .5 * w, .00 * h);
+    s.lineTo(.5 * w, -.26 * h);
+  },
+};
+
+function bodyGeometry(type, bw, bh, depth) {
+  const key = `body:${type}:${bw.toFixed(2)}:${bh.toFixed(2)}:${depth.toFixed(2)}`;
+  if (GEO_CACHE[key]) return GEO_CACHE[key];
+  const prof = BODY_PROFILES[type];
+  if (!prof) return roundedBox(bw, bh, depth, Math.min(bh * 0.3, 0.24));
+  const shape = new THREE.Shape();
+  prof(shape, bw, bh * 1.55);
+  shape.closePath();
+  const bevel = Math.min(0.12, depth * 0.2);
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: depth - bevel * 2, bevelEnabled: true, bevelThickness: bevel,
+    bevelSize: bevel, bevelSegments: 2, curveSegments: 8,
+  });
+  geo.translate(0, 0, -(depth - bevel * 2) / 2);
+  geo.userData.shared = true;
+  GEO_CACHE[key] = geo;
+  return geo;
+}
+
 // ---------- tête de chat pilote ----------
 export function catHead(size = 0.28, color = 0xffd9a0) {
   const g = new THREE.Group();
@@ -235,13 +288,23 @@ export function createCarModel(spec, { shadows = true } = {}) {
   const paint = spec.loadout?.body?.paint;
   const color = paint ? new THREE.Color(paint) : (BODY_COLORS[spec.loadout?.body?.type] ?? 0x8899aa);
 
-  const bodyMat = new THREE.MeshStandardMaterial({ color, metalness: 0.4, roughness: 0.42 });
-  const chassis = new THREE.Mesh(roundedBox(bw, bh, depth, Math.min(bh * 0.3, 0.24)), bodyMat);
+  // peinture brillante : les reflets viennent de scene.environment (PMREM)
+  const bodyMat = new THREE.MeshStandardMaterial({ color, metalness: 0.45, roughness: 0.32 });
+  const chassis = new THREE.Mesh(bodyGeometry(spec.loadout?.body?.type, bw, bh, depth), bodyMat);
   bodyGroup.add(chassis);
-  // plaque inférieure sombre
-  const plate = new THREE.Mesh(roundedBox(bw * 0.96, bh * 0.3, depth * 0.9, 0.06), METAL_DARK());
-  plate.position.y = -bh / 2 + bh * 0.1;
+  // bas de caisse sombre (bi-ton)
+  const plate = new THREE.Mesh(roundedBox(bw * 0.96, bh * 0.36, depth * 0.9, 0.06), METAL_DARK());
+  plate.position.y = -bh / 2 + bh * 0.08;
   bodyGroup.add(plate);
+  // néon sous châssis (vend l'arène nocturne)
+  const glow = new THREE.Mesh(
+    new THREE.PlaneGeometry(bw * 0.8, depth * 0.9),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  glow.rotation.x = -Math.PI / 2;
+  glow.position.y = -bh / 2 - 0.16;
+  glow.userData.noShadow = true;
+  bodyGroup.add(glow);
 
   // phare avant lumineux
   const headlight = new THREE.Mesh(
@@ -251,14 +314,15 @@ export function createCarModel(spec, { shadows = true } = {}) {
   headlight.position.set(bw / 2 - 0.01, bh * 0.2, 0);
   bodyGroup.add(headlight);
 
-  // décalco étoile sur les flancs
-  const decal = starDecalTexture();
+  // décalco de course sur les flancs : bande diagonale + numéro d'équipe
+  const raceNum = (((spec.loadout?.body?.stars || 1) * 7 + (spec.loadout?.body?.level || 1)) % 89) + 10;
+  const decal = raceDecalTexture(raceNum);
   for (const sz of [-1, 1]) {
     const face = new THREE.Mesh(
-      new THREE.PlaneGeometry(bh * 0.72, bh * 0.72),
-      new THREE.MeshBasicMaterial({ map: decal, transparent: true, opacity: 0.9 })
+      new THREE.PlaneGeometry(bw * 0.52, bh * 0.72),
+      new THREE.MeshBasicMaterial({ map: decal, transparent: true, opacity: 0.92 })
     );
-    face.position.set(bw * 0.24, 0, sz * (depth / 2 + 0.012));
+    face.position.set(bw * 0.16, -bh * 0.04, sz * (depth / 2 + 0.012));
     face.rotation.y = sz === 1 ? 0 : Math.PI;
     face.userData.noShadow = true;
     bodyGroup.add(face);
@@ -504,6 +568,37 @@ function starDecalTexture() {
   return STAR_TEX;
 }
 
+// Décalco de course (bande blanche diagonale + numéro), cachée par numéro.
+const RACE_TEX = {};
+function raceDecalTexture(num) {
+  if (RACE_TEX[num]) return RACE_TEX[num];
+  const c = document.createElement('canvas');
+  c.width = 192; c.height = 256;
+  const x = c.getContext('2d');
+  x.save();
+  x.translate(96, 128);
+  x.rotate(-0.32);
+  x.fillStyle = 'rgba(255,255,255,.34)';
+  x.fillRect(-140, -52, 280, 104);
+  x.fillStyle = 'rgba(255,255,255,.2)';
+  x.fillRect(-140, 62, 280, 16);
+  x.restore();
+  x.fillStyle = 'rgba(255,255,255,.95)';
+  x.font = `800 108px 'Baloo 2', sans-serif`;
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.save();
+  x.translate(96, 122); x.rotate(-0.32);
+  x.strokeStyle = 'rgba(10,10,30,.5)'; x.lineWidth = 10;
+  x.strokeText(String(num), 0, 0);
+  x.fillText(String(num), 0, 0);
+  x.restore();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.userData.shared = true;
+  RACE_TEX[num] = tex;
+  return tex;
+}
+
 function bannerTexture(text, bg, fg) {
   const c = document.createElement('canvas');
   c.width = 512; c.height = 128;
@@ -546,12 +641,12 @@ function groundTexture(color = '#2b2b50') {
 
 // Ambiances d'arène : une par ligue (Bois → Légende).
 export const ARENA_THEMES = [
-  { name: 'Bois',    sky: ['#0e0e28', '#232055', '#4a2a68', '#7a3a70'], ground: 0x2b2b50, track: 0x33335e, build: 0x191736, moon: 0xffe6b0, fog: 0x191636, stars: false },
-  { name: 'Bronze',  sky: ['#1a0e20', '#48204a', '#8a3a48', '#c46a3a'], ground: 0x3a2b40, track: 0x4a3350, build: 0x241428, moon: 0xffc078, fog: 0x2a1830, stars: false },
-  { name: 'Argent',  sky: ['#0a1226', '#16304e', '#2a5578', '#5e8aa8'], ground: 0x26364e, track: 0x2e4260, build: 0x101c2c, moon: 0xf0f6ff, fog: 0x14243a, stars: true  },
-  { name: 'Or',      sky: ['#160f08', '#3e2c12', '#7a561e', '#b8862e'], ground: 0x3c3020, track: 0x4a3c28, build: 0x241a0e, moon: 0xffe9a0, fog: 0x2a2012, stars: false },
-  { name: 'Diamant', sky: ['#0a0a2a', '#1a1a5e', '#2a3a8e', '#3a6ab0'], ground: 0x1e2450, track: 0x283060, build: 0x10123a, moon: 0x9fe8ff, fog: 0x141a44, stars: true  },
-  { name: 'Légende', sky: ['#140508', '#3a0a14', '#6e1420', '#a02430'], ground: 0x36141c, track: 0x421a24, build: 0x1e080e, moon: 0xff8a70, fog: 0x260a12, stars: true  },
+  { name: 'Bois',    sky: ['#0e0e28', '#232055', '#4a2a68', '#7a3a70'], ground: 0x2b2b50, track: 0x33335e, build: 0x191736, moon: 0xffe6b0, fog: 0x191636, stars: false, weather: null },
+  { name: 'Bronze',  sky: ['#1a0e20', '#48204a', '#8a3a48', '#c46a3a'], ground: 0x3a2b40, track: 0x4a3350, build: 0x241428, moon: 0xffc078, fog: 0x2a1830, stars: false, weather: { type: 'embers', color: 0xff8a40 } },
+  { name: 'Argent',  sky: ['#0a1226', '#16304e', '#2a5578', '#5e8aa8'], ground: 0x26364e, track: 0x2e4260, build: 0x101c2c, moon: 0xf0f6ff, fog: 0x14243a, stars: true,  weather: { type: 'snow', color: 0xffffff } },
+  { name: 'Or',      sky: ['#160f08', '#3e2c12', '#7a561e', '#b8862e'], ground: 0x3c3020, track: 0x4a3c28, build: 0x241a0e, moon: 0xffe9a0, fog: 0x2a2012, stars: false, weather: { type: 'dust', color: 0xffd88a } },
+  { name: 'Diamant', sky: ['#0a0a2a', '#1a1a5e', '#2a3a8e', '#3a6ab0'], ground: 0x1e2450, track: 0x283060, build: 0x10123a, moon: 0x9fe8ff, fog: 0x141a44, stars: true,  weather: { type: 'neon', color: 0x45e8ff } },
+  { name: 'Légende', sky: ['#140508', '#3a0a14', '#6e1420', '#a02430'], ground: 0x36141c, track: 0x421a24, build: 0x1e080e, moon: 0xff8a70, fog: 0x260a12, stars: true,  weather: { type: 'embers', color: 0xff4030 } },
 ];
 
 export function skyTexture(theme = ARENA_THEMES[0]) {
@@ -690,6 +785,28 @@ export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {
       win.position.set(bx - bw / 2 + rnd() * bw, 0.8 + rnd() * (bh - 1.4), bz + bw / 2 + 0.02);
       env.add(win);
     }
+  }
+
+  // météo d'ambiance : un seul THREE.Points animé par le combat
+  if (theme.weather) {
+    const N = 220;
+    const pos = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * 44;
+      pos[i * 3 + 1] = Math.random() * 16;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 18;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const additive = theme.weather.type === 'embers' || theme.weather.type === 'neon';
+    const points = new THREE.Points(geo, new THREE.PointsMaterial({
+      color: theme.weather.color,
+      size: theme.weather.type === 'neon' ? 0.14 : 0.09,
+      transparent: true, opacity: 0.7, depthWrite: false,
+      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+    }));
+    env.add(points);
+    env.userData.weather = { points, type: theme.weather.type };
   }
 
   // lune

@@ -41,7 +41,7 @@ let splash = null;
 function startSplash() {
   const canvas = document.getElementById('splash-canvas');
   const renderer = createRenderer(canvas);
-  const scene = createStudioScene();
+  const scene = createStudioScene(renderer);
   const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
   const holder = new THREE.Group();
   scene.add(holder);

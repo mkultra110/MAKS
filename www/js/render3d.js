@@ -2,6 +2,23 @@
 import * as THREE from 'three';
 import { skyTexture } from './models3d.js';
 
+// Environnement de réflexions (PMREM) généré depuis le ciel procédural —
+// c'est lui qui donne aux peintures et métaux leurs vrais reflets.
+const ENV_CACHE = {};
+export function envMapFor(renderer, theme = null) {
+  const key = theme?.name || 'studio';
+  if (!ENV_CACHE[key]) {
+    const tex = skyTexture(theme || undefined);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    ENV_CACHE[key] = pmrem.fromEquirectangular(tex).texture;
+    ENV_CACHE[key].userData.shared = true; // jamais disposé (cache global)
+    pmrem.dispose();
+    tex.dispose();
+  }
+  return ENV_CACHE[key];
+}
+
 export function createRenderer(canvas, { shadows = true, alpha = false, antialias = true } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias, alpha });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -62,9 +79,13 @@ export function studioLights(scene, { intensity = 1 } = {}) {
 }
 
 // Scène « studio » : podium circulaire + fond dégradé, pour garage/vitrines.
-export function createStudioScene() {
+export function createStudioScene(renderer = null) {
   const scene = new THREE.Scene();
   scene.background = skyTexture();
+  if (renderer) {
+    scene.environment = envMapFor(renderer);
+    scene.environmentIntensity = 0.6;
+  }
   studioLights(scene);
 
   const podium = new THREE.Mesh(

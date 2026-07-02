@@ -31,7 +31,7 @@ function ensurePreview() {
   if (pv) return;
   const canvas = document.getElementById('preview-canvas');
   const renderer = createRenderer(canvas);
-  const scene = createStudioScene();
+  const scene = createStudioScene(renderer);
   const camera = new THREE.PerspectiveCamera(34, 2, 0.1, 100);
   const holder = new THREE.Group();
   scene.add(holder);

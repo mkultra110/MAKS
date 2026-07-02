@@ -442,13 +442,19 @@ body {
 .fighter.right { text-align: right; }
 .hud-name { font-size: 13px; font-weight: 800; text-shadow: 0 1px 3px #000; margin-bottom: 3px; letter-spacing: .03em; }
 .hpbar {
+  position: relative;
   height: 16px; background: rgba(0,0,6,.6); border-radius: 8px; overflow: hidden;
   border: 1px solid rgba(255,255,255,.28);
   box-shadow: 0 2px 8px rgba(0,0,0,.5), inset 0 2px 4px rgba(0,0,0,.5);
 }
-.hpfill { height: 100%; border-radius: 7px; transition: width .18s; box-shadow: inset 0 2px 0 rgba(255,255,255,.35); }
+/* traîne orange : montre ce qu'on vient de perdre */
+.hpghost { position: absolute; top: 0; left: 0; height: 100%; background: #ffb347; border-radius: 7px; }
+.hpghost.foe { left: auto; right: 0; }
+.hpfill { position: relative; height: 100%; border-radius: 7px; box-shadow: inset 0 2px 0 rgba(255,255,255,.35); }
 .hpfill.me { background: linear-gradient(180deg, #8fe0ff, #1f9df0); }
 .hpfill.foe { background: linear-gradient(180deg, #ff9daf, #e8415e); float: right; }
+@keyframes hurt { 0% { filter: brightness(2.2); box-shadow: 0 0 14px #ff5d7a; } }
+.hpbar.hurt { animation: hurt .12s; }
 #hud-timer {
   font-size: 24px; font-weight: 800; text-shadow: 0 2px 4px #000; min-width: 48px; text-align: center;
   font-variant-numeric: tabular-nums;

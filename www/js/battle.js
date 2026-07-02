@@ -3,10 +3,10 @@ import * as THREE from 'three';
 import { buildCarSpec } from './car.js';
 import { copilotMods } from './state.js';
 import { COPILOTS, WHEELS, partMult } from './data.js';
-import { createRenderer, disposeModel } from './render3d.js';
+import { createRenderer, disposeModel, envMapFor } from './render3d.js';
 import { createCarModel, createArena, createDeathWall, skyTexture, pulseLaserLens, ARENA_THEMES, S } from './models3d.js';
 import {
-  sfxHit, sfxBoom, sfxLaser, sfxShot, sfxCount, sfxGo, sfxSiren,
+  sfxHit, sfxBoom, sfxLaser, sfxShot, sfxCount, sfxGo, sfxSiren, sfxClang,
   startBattleAudio, stopBattleAudio, setEngineSpeed, crowdExcite,
 } from './sfx.js';
 import { EffectComposer } from './lib/postprocessing/EffectComposer.js';
@@ -109,9 +109,11 @@ function buildScene(battle, themeIndex = 0) {
   const theme = ARENA_THEMES[Math.min(themeIndex, ARENA_THEMES.length - 1)];
   const scene = new THREE.Scene();
   scene.background = skyTexture(theme);
+  scene.environment = envMapFor(renderer, theme);
+  scene.environmentIntensity = 0.55;
   scene.fog = new THREE.Fog(theme.fog, 55, 140);
 
-  const hemi = new THREE.HemisphereLight(0xcfd6ff, 0x241a38, 0.75);
+  const hemi = new THREE.HemisphereLight(0xcfd6ff, 0x241a38, 0.55);
   scene.add(hemi);
   const key = new THREE.DirectionalLight(0xfff2dd, 2.2);
   key.position.set(6, 14, 9);
@@ -233,11 +235,16 @@ export function startBattle(config) {
     projectiles: [], beams: [], bursts: [], waves: [], floaters: [], debris: [],
     time: -3.2, wallsDeadly: false,
     shake: 0, slowmo: 1, hitStop: 0, acc: 0,
+    // pipeline caméra : impulsions accumulées, décrues chaque frame
+    roll: 0, rollKick: 0, kickX: 0, fovKick: 0, menace: 0,
+    focusX: 0, focusT: 0, clashLast: -9, clashCount: 0,
+    ghostL: 100, ghostR: 100, ghostHoldL: 0, ghostHoldR: 0,
     finished: false, raf: 0, lastMsg: '',
     result: null, endTimer: 0,
     overlay: document.getElementById('battle-overlay'),
   };
   current = battle;
+  if (localStorage.getItem('maks_debug')) window.__battle = battle;
   buildScene(battle, themeIndex);
 
   Events.on(engine, 'collisionActive', ev => {
@@ -250,6 +257,7 @@ export function startBattle(config) {
   Events.on(engine, 'collisionStart', ev => {
     for (const pair of ev.pairs) {
       handleProjectilePair(battle, pair);
+      handleClashPair(battle, pair);
       handleWallPair(battle, pair);
     }
   });
@@ -321,9 +329,42 @@ function handleMeleePair(battle, pair) {
       if (wp.def.push) {
         Body.setVelocity(target.chassis, { x: target.chassis.velocity.x + owner.dir * 2.2, y: target.chassis.velocity.y - 0.6 });
       }
+      // chaque coup de mêlée a du poids : micro-accroc + kick caméra + haptique
+      hitStop(battle, 0.035, 0.15);
+      battle.kickX += owner.dir * 0.09;
+      if (target.team === 0 && battle.time - (battle.lastVibe || 0) > 0.15) {
+        navigator.vibrate?.(15);
+        battle.lastVibe = battle.time;
+      }
       sfxHit();
     }
   }
+}
+
+// Clash mêlée contre mêlée : les armes s'entrechoquent, les machines reculent.
+function handleClashPair(battle, pair) {
+  if (battle.time < 0 || battle.finished) return;
+  const ma = pair.bodyA.label?.match(/^weapon:(\d):(\d+)$/);
+  const mb = pair.bodyB.label?.match(/^weapon:(\d):(\d+)$/);
+  if (!ma || !mb || ma[1] === mb[1]) return;
+  const carA = battle.cars[+ma[1]], carB = battle.cars[+mb[1]];
+  const wa = carA.spec.weapons[+ma[2]], wb = carB.spec.weapons[+mb[2]];
+  if (wa.kind !== 'melee' || wb.kind !== 'melee') return;
+  if (Vector.magnitude(Vector.sub(pair.bodyA.velocity, pair.bodyB.velocity)) < 3.5) return;
+  if (battle.time - battle.clashLast < 0.9) return;
+  battle.clashLast = battle.time;
+  battle.clashCount++;
+  const sup = pair.collision.supports[0] || carA.chassis.position;
+  hitStop(battle, 0.11, 0.04);
+  battle.shake = Math.max(battle.shake, 13);
+  battle.rollKick += 0.06;
+  burst(battle, sup.x, sup.y, 0, 26, 0xfff2b0, { speed: 6.5, size: 0.11, life: 0.5 });
+  shockwave(battle, sup.x, sup.y, 0, 0xffffff);
+  for (const car of [carA, carB]) {
+    Body.setVelocity(car.chassis, { x: car.chassis.velocity.x - car.dir * 3.4, y: -1.6 });
+  }
+  sfxClang();
+  if (battle.clashCount % 3 === 1) showToast(battle, 'CLASH !');
 }
 
 // Roues cloutées : elles mordent tout ce qu'elles touchent chez l'adversaire.
@@ -361,6 +402,8 @@ function handleProjectilePair(battle, pair) {
       flashLight(battle, pos.x, pos.y, 70);
       battle.shake = Math.max(battle.shake, 8);
       hitStop(battle, 0.07, 0.05); // micro-freeze : l'impact se sent
+      battle.rollKick += 0.055 * (to3x(pos.x) < battle.camX ? -1 : 1);
+      battle.fovKick = 6; // punch de focale
       for (const car of battle.cars) {
         if (car === proj.owner || car.dead) continue;
         const d = Vector.magnitude(Vector.sub(car.chassis.position, pos));
@@ -389,11 +432,33 @@ function applyDamage(battle, car, dmg, at) {
   if (car.dead || (battle.finished && battle.endTimer > 0.4)) return;
   car.hp -= dmg;
   car.hitFlash = 0.14; // flash rouge du véhicule touché
+  const crit = dmg >= 25;
   battle.floaters.push({
     x: at.x + (Math.random() - 0.5) * 20, y: at.y - 30, z: car.z,
     vy: -90, life: 0.85, text: '-' + Math.max(1, Math.round(dmg)),
-    color: car.team === 0 ? '#ff8fa4' : '#ffe08a',
+    scale: crit ? 2.4 : 1.7, // pope puis se stabilise
+    color: crit ? '#ffd23e' : (car.team === 0 ? '#ff8fa4' : '#ffe08a'),
   });
+  if (crit) shockwave(battle, at.x, at.y, car.z, 0xffd23e);
+  // dutch angle sur les gros impacts
+  if (dmg > 14) battle.rollKick += 0.055 * (to3x(at.x) < battle.camX ? -1 : 1);
+  // flash de douleur sur la barre de PV du HUD
+  const bar = document.getElementById(car.team === 0 ? 'hp-l' : 'hp-r')?.parentElement;
+  if (bar) {
+    bar.classList.remove('hurt');
+    void bar.offsetWidth;
+    bar.classList.add('hurt');
+  }
+  // « dernier souffle » : slow-mo dramatique la première fois sous 15% de PV
+  if (!car.lastStand && car.hp > 0 && car.hp < car.maxHp * 0.15) {
+    car.lastStand = true;
+    hitStop(battle, 0.75, 0.32);
+    battle.rollKick += 0.05;
+    crowdExcite(1);
+    battle.focusX = to3x(car.chassis.position.x);
+    battle.focusT = 0.75;
+    showToast(battle, car.team === 0 ? 'TIENS BON !' : 'ACHÈVE-LE !');
+  }
   if (car.hp <= 0) killCar(battle, car, 'détruit');
 }
 
@@ -550,6 +615,21 @@ function step(battle, dt, onEnd) {
       car.flipTimer += dt;
       if (car.flipTimer > FLIP_TIME) killCar(battle, car, 'retourné');
     } else car.flipTimer = 0;
+    // squash & stretch : détection décollage/atterrissage
+    const wasAirborne = car.airborne;
+    car.airborne = car.wheels.length > 0 &&
+      car.wheels.every(w => w.body.position.y < GROUND_Y - w.r - 8);
+    if (car.airborne) {
+      car.squash = Math.max(car.squash ?? 1, 1 + Math.min(0.16, Math.abs(car.prevVy || 0) * 0.015));
+    } else if (wasAirborne && (car.prevVy || 0) > 4) {
+      car.squashVel = -3.5; // écrasement à l'atterrissage
+      for (const w of car.wheels) {
+        burst(battle, w.body.position.x, GROUND_Y - 4, car.z, 6, 0x8a7fae, { speed: 2, size: 0.16, life: 0.4 });
+      }
+      battle.shake = Math.max(battle.shake, Math.min(7, car.prevVy * 0.8));
+      sfxHit();
+    }
+    car.prevVy = car.chassis.velocity.y;
   }
 
   // physique à pas fixe : indépendante du taux de rafraîchissement (60/120 Hz)
@@ -562,7 +642,7 @@ function step(battle, dt, onEnd) {
     iter++;
   }
   updateEffects(battle, dt);
-  updateHud(battle, remaining);
+  updateHud(battle, remaining, dt);
   // le moteur ronronne selon la vitesse du joueur, la foule s'excite à la fin
   setEngineSpeed(Math.abs(cars[0].chassis.velocity.x) + Math.abs(cars[1].chassis.velocity.x));
   crowdExcite(battle.finished ? 1 : (battle.wallsDeadly ? 0.5 : 0));
@@ -574,12 +654,19 @@ function updateCopilot(battle, car, remaining) {
   const cp = COPILOTS[car.copilot];
   if (car.copilot === 'ronron' && car.hp < car.maxHp * 0.35) {
     car.copilotUsed = true;
+    const extremis = car.hp < car.maxHp * 0.12;
     const healed = Math.round(car.maxHp * 0.3);
     car.hp = Math.min(car.maxHp, car.hp + healed);
     const p = car.chassis.position;
     burst(battle, p.x, p.y - 40, car.z, 16, 0x4de08a, { speed: 2.2, size: 0.13, life: 0.8, grav: -2 });
-    battle.floaters.push({ x: p.x, y: p.y - 60, z: car.z, vy: -70, life: 1, text: '+' + healed, color: '#7dffb0' });
-    showToast(battle, `${cp.name} soigne ${healed} PV !`);
+    battle.floaters.push({ x: p.x, y: p.y - 60, z: car.z, vy: -70, life: 1, text: '+' + healed, color: '#7dffb0', scale: 1.7 });
+    if (extremis) {
+      hitStop(battle, 0.5, 0.3);
+      shockwave(battle, p.x, p.y, car.z, 0x4de08a);
+      showToast(battle, 'SAUVETAGE IN EXTREMIS !');
+    } else {
+      showToast(battle, `${cp.name} soigne ${healed} PV !`);
+    }
   } else if (car.copilot === 'zigzag' && battle.time >= 0) {
     car.copilotUsed = true;
     const enemy = battle.cars[1 - car.team];
@@ -791,9 +878,20 @@ function updateEffects(battle, dt) {
   }
   battle.beams = battle.beams.filter(b => b.life > 0);
 
-  // textes flottants
-  for (const f of battle.floaters) { f.y += f.vy * dt; f.life -= dt; }
+  // textes flottants (le pop retombe vers l'échelle 1)
+  for (const f of battle.floaters) {
+    f.y += f.vy * dt;
+    f.life -= dt;
+    if (f.scale) f.scale += (1 - f.scale) * Math.min(1, dt * 14);
+  }
   battle.floaters = battle.floaters.filter(f => f.life > 0);
+  // traîne orange des mini-barres de PV
+  for (const car of battle.cars) {
+    const ratio = Math.max(0, car.hp / car.maxHp);
+    car.ghostRatio = car.ghostRatio ?? 1;
+    if (car.ghostRatio < ratio) car.ghostRatio = ratio; // soin : rattrape direct
+    else car.ghostRatio = Math.max(ratio, car.ghostRatio - 0.8 * dt);
+  }
 
   // débris de carrosserie (gravité + rebond au sol)
   for (const d of battle.debris) {
@@ -826,10 +924,31 @@ function updateEffects(battle, dt) {
   battle.shake = Math.max(0, battle.shake - 60 * dt);
 }
 
-function updateHud(battle, remaining) {
+// Barres de PV « qui saignent » : chute instantanée + traîne orange, soin lissé.
+function hudBarStep(battle, side, car, dt) {
+  const target = Math.max(0, (car.hp / car.maxHp) * 100);
+  const dKey = 'disp' + side, gKey = 'ghost' + side, hKey = 'ghostHold' + side;
+  let disp = battle[dKey] ?? 100;
+  disp = target < disp ? target : Math.min(target, disp + 60 * dt); // soin lissé
+  battle[dKey] = disp;
+  let ghost = battle[gKey] ?? 100;
+  if (ghost > disp + 0.1) {
+    battle[hKey] = (battle[hKey] ?? 0.3) - dt;
+    if (battle[hKey] <= 0) ghost = Math.max(disp, ghost - 80 * dt);
+  } else {
+    ghost = disp;
+    battle[hKey] = 0.3;
+  }
+  battle[gKey] = ghost;
+  document.getElementById(side === 'L' ? 'hp-l' : 'hp-r').style.width = disp + '%';
+  const ghostEl = document.getElementById(side === 'L' ? 'ghost-l' : 'ghost-r');
+  if (ghostEl) ghostEl.style.width = ghost + '%';
+}
+
+function updateHud(battle, remaining, dt) {
   const [me, foe] = battle.cars;
-  document.getElementById('hp-l').style.width = Math.max(0, (me.hp / me.maxHp) * 100) + '%';
-  document.getElementById('hp-r').style.width = Math.max(0, (foe.hp / foe.maxHp) * 100) + '%';
+  hudBarStep(battle, 'L', me, dt);
+  hudBarStep(battle, 'R', foe, dt);
   const t = document.getElementById('hud-timer');
   if (battle.time < 0) t.textContent = BATTLE_TIME;
   else if (remaining > 0) t.textContent = Math.ceil(remaining);
@@ -854,7 +973,7 @@ function resize(battle) {
   battle.dpr = dpr;
 }
 
-function syncCar(battle, car, t) {
+function syncCar(battle, car, t, dt) {
   const c = car.chassis;
   const off = car.centerOffset, ang = c.angle;
   // centre géométrique du châssis (le centre de masse est décalé par les armes)
@@ -862,6 +981,14 @@ function syncCar(battle, car, t) {
   const cy = c.position.y + off.x * Math.sin(ang) + off.y * Math.cos(ang);
   car.yaw.position.set(to3x(cx), to3y(cy), car.z);
   car.model.bodyGroup.rotation.z = -ang * car.dir;
+  // squash & stretch : ressort amorti, volume conservé
+  car.squash = car.squash ?? 1;
+  car.squashVel = car.squashVel ?? 0;
+  car.squash += car.squashVel * dt;
+  car.squashVel += (1 - car.squash) * 180 * dt;
+  car.squashVel *= Math.exp(-9 * dt);
+  const sq = Math.min(1.2, Math.max(0.75, car.squash));
+  car.model.bodyGroup.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
   car.spec.wheels.forEach((w, i) => {
     const wb = car.wheels[i].body;
     const wm = car.model.wheelMeshes[i];
@@ -894,7 +1021,7 @@ function syncCar(battle, car, t) {
 function render(battle, t, dt) {
   const { camera, cars } = battle;
 
-  for (const car of cars) syncCar(battle, car, t);
+  for (const car of cars) syncCar(battle, car, t, dt);
 
   // projectiles
   for (const p of battle.projectiles) {
@@ -930,26 +1057,64 @@ function render(battle, t, dt) {
     }
   }
 
-  // caméra : cadre les deux véhicules, avec inertie
+  // ---- pipeline caméra de réalisateur (ordre canonique, un seul écrivain) ----
   const [a, b] = cars;
   const ax = to3x(a.chassis.position.x), bx = to3x(b.chassis.position.x);
   const midX = (ax + bx) / 2;
-  const span = Math.abs(ax - bx) + 3.2;
-  const vFov = camera.fov * Math.PI / 180;
+  // 1. cible de focus : « dernier souffle » prioritaire sur le milieu du duel
+  battle.focusT = Math.max(0, battle.focusT - dt);
+  const tx = battle.focusT > 0 ? battle.focusX : midX;
+  battle.camX += (tx - battle.camX) * Math.min(1, dt * (battle.focusT > 0 ? 8 : 5));
+  // 2. cadrage : FOV de BASE constant (le punch de focale ne doit pas boucler dedans)
+  const BASE_FOV = 42;
+  const vFov = BASE_FOV * Math.PI / 180;
   const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+  const span = Math.abs(ax - bx) + 3.2;
   const targetDist = Math.min(Math.max((span / 2) / Math.tan(hFov / 2), 8), 46);
-  battle.camX += (midX - battle.camX) * Math.min(1, dt * 5);
   battle.camDist += (targetDist - battle.camDist) * Math.min(1, dt * 3.5);
+  // 3. menace des murs : contre-plongée progressive à hauteur de capot
+  battle.menace += ((battle.wallsDeadly ? 1 : 0) - battle.menace) * Math.min(1, dt / 1.2);
+  const baseY = 2.0 + battle.camDist * 0.13;
+  const camY = baseY + (1.15 - baseY) * battle.menace;
+  const baseLookY = 0.85 + battle.camDist * 0.075;
+  const lookY = baseLookY + (1.7 - baseLookY) * battle.menace;
+  // 4. position = base + dérive vivante + kick des coups + shake
   const shk = battle.shake * 0.012;
   camera.position.set(
-    battle.camX + (Math.random() - 0.5) * shk,
-    2.0 + battle.camDist * 0.13 + (Math.random() - 0.5) * shk,
+    battle.camX + Math.sin(t * 0.4) * 0.35 + battle.kickX + (Math.random() - 0.5) * shk,
+    camY + (Math.random() - 0.5) * shk,
     battle.camDist
   );
-  camera.lookAt(battle.camX, 0.85 + battle.camDist * 0.075, 0);
+  camera.lookAt(battle.camX + Math.sin(t * 0.27) * 0.2, lookY, 0);
+  // 5. APRÈS lookAt : roll (dutch angle) + punch de focale, avec retour au calme
+  battle.roll += (battle.rollKick - battle.roll) * Math.min(1, dt * 10);
+  battle.rollKick *= Math.exp(-dt * 4);
+  camera.rotation.z += battle.roll;
+  battle.kickX *= Math.exp(-14 * dt);
+  battle.fovKick *= Math.exp(-dt * 7);
+  if (Math.abs(camera.fov - (BASE_FOV + battle.fovKick)) > 0.05) {
+    camera.fov = BASE_FOV + battle.fovKick;
+    camera.updateProjectionMatrix();
+  }
   // le brouillard suit la caméra pour ne jamais noyer les combattants
   battle.scene.fog.near = battle.camDist + 9;
   battle.scene.fog.far = battle.camDist + 85;
+
+  // météo d'ambiance (braises/neige/néons), volume enroulé autour de la caméra
+  const weather = battle.env.userData.weather;
+  if (weather) {
+    const wpos = weather.points.geometry.attributes.position;
+    const arr = wpos.array;
+    for (let i = 0; i < wpos.count; i++) {
+      let x = arr[i * 3], y = arr[i * 3 + 1];
+      if (weather.type === 'embers') { y += 1.2 * dt; x += Math.sin(t * 2 + i) * 0.4 * dt; }
+      else if (weather.type === 'neon') { y -= 6 * dt; }
+      else { y -= 0.8 * dt; x += Math.sin(t + i) * 0.3 * dt; }
+      arr[i * 3] = battle.camX + ((x - battle.camX + 22) % 44 + 44) % 44 - 22;
+      arr[i * 3 + 1] = ((y % 16) + 16) % 16;
+    }
+    wpos.needsUpdate = true;
+  }
 
   // la foule saute et s'agite
   const crowd = battle.env.userData.crowd;
@@ -981,25 +1146,28 @@ function renderOverlay(battle) {
     return [(v.x + 1) / 2 * W, (1 - v.y) / 2 * H];
   };
 
-  // mini barres de PV
+  // mini barres de PV (avec traîne orange)
   for (const car of battle.cars) {
     if (car.dead) continue;
     const p = car.chassis.position;
     const [sx, sy] = project(p.x, p.y - car.spec.body.h / 2 - 46, car.z);
     const bw = 0.062 * W;
+    const bh2 = 8 * battle.dpr / 2;
     ctx.fillStyle = 'rgba(4,4,14,.55)';
-    ctx.beginPath(); ctx.roundRect(sx - bw / 2, sy, bw, 8 * battle.dpr / 2 + 4, 4); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(sx - bw / 2, sy, bw, bh2 + 4, 4); ctx.fill();
+    ctx.fillStyle = '#ffb347';
+    ctx.beginPath(); ctx.roundRect(sx - bw / 2 + 1.5, sy + 1.5, (bw - 3) * (car.ghostRatio ?? 1), bh2 + 1, 3); ctx.fill();
     ctx.fillStyle = car.team === 0 ? '#4fc3ff' : '#ff5d7a';
     const ratio = Math.max(0, car.hp / car.maxHp);
-    ctx.beginPath(); ctx.roundRect(sx - bw / 2 + 1.5, sy + 1.5, (bw - 3) * ratio, 8 * battle.dpr / 2 + 1, 3); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(sx - bw / 2 + 1.5, sy + 1.5, (bw - 3) * ratio, bh2 + 1, 3); ctx.fill();
   }
 
-  // dégâts flottants
+  // dégâts flottants (pop d'échelle + critiques dorés)
   ctx.textAlign = 'center';
   const fs = Math.round(15 * battle.dpr);
   for (const f of battle.floaters) {
     const [sx, sy] = project(f.x, f.y, f.z);
-    ctx.font = `800 ${fs}px 'Baloo 2', sans-serif`;
+    ctx.font = `800 ${Math.round(fs * (f.scale || 1))}px 'Baloo 2', sans-serif`;
     ctx.globalAlpha = Math.min(1, f.life * 2.2);
     ctx.strokeStyle = 'rgba(0,0,8,.7)';
     ctx.lineWidth = 4;
