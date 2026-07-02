@@ -1,0 +1,11 @@
+{
+  "appId": "com.maks.arena",
+  "appName": "MAKS",
+  "webDir": "www",
+  "backgroundColor": "#12122aff",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#12122aff",
+    "preferredContentMode": "mobile"
+  }
+}

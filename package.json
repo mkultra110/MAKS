@@ -1,0 +1,17 @@
+{
+  "name": "maks",
+  "version": "1.0.0",
+  "description": "MAKS — Mega Arena Kombat Stars. Jeu mobile de combat de machines inspiré de CATS.",
+  "private": true,
+  "scripts": {
+    "start": "npx http-server www -p 8080 -c-1",
+    "ios:add": "npx cap add ios",
+    "ios:sync": "npx cap sync ios",
+    "ios:open": "npx cap open ios"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/ios": "^6.1.2"
+  }
+}

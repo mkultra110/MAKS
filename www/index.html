@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MAKS">
+<meta name="theme-color" content="#12122a">
+<title>MAKS — Mega Arena Kombat Stars</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ÉCRAN GARAGE -->
+  <section id="screen-garage" class="screen">
+    <header class="topbar">
+      <div class="brand">MAKS</div>
+      <div class="wallet">
+        <span class="coin-icon">🪙</span><span id="coins">0</span>
+      </div>
+    </header>
+
+    <div class="stage-banner">
+      <div id="stage-label">Étape 1</div>
+      <div class="stage-progress"><div id="stage-fill"></div></div>
+    </div>
+
+    <div class="preview-wrap">
+      <canvas id="preview-canvas"></canvas>
+      <div class="car-stats">
+        <div class="stat hp">❤️ <span id="stat-hp">0</span></div>
+        <div class="stat atk">⚔️ <span id="stat-atk">0</span></div>
+        <div class="stat nrg">⚡ <span id="stat-energy">0/0</span></div>
+      </div>
+      <div id="energy-warning" class="energy-warning hidden">⚡ Énergie dépassée !</div>
+    </div>
+
+    <div class="slots-row" id="slots-row"></div>
+
+    <nav class="inv-tabs">
+      <button class="tab active" data-tab="body">🚗</button>
+      <button class="tab" data-tab="wheel">🛞</button>
+      <button class="tab" data-tab="weapon">⚔️</button>
+      <button class="tab" data-tab="gadget">🔧</button>
+    </nav>
+    <div id="inventory" class="inventory"></div>
+
+    <footer class="actions">
+      <button id="btn-quick" class="btn secondary">🎲 Combat rapide</button>
+      <button id="btn-fight" class="btn primary">⚔️ CHAMPIONNAT</button>
+    </footer>
+  </section>
+
+  <!-- FICHE PIÈCE -->
+  <div id="part-sheet" class="sheet hidden">
+    <div class="sheet-card">
+      <div class="sheet-head">
+        <canvas id="part-canvas" width="120" height="90"></canvas>
+        <div>
+          <div id="part-name" class="part-name"></div>
+          <div id="part-stars" class="part-stars"></div>
+          <div id="part-level" class="part-level"></div>
+        </div>
+        <button id="sheet-close" class="close">✕</button>
+      </div>
+      <div id="part-statlist" class="part-statlist"></div>
+      <div class="sheet-actions">
+        <button id="btn-equip" class="btn primary">Équiper</button>
+        <button id="btn-upgrade" class="btn gold"></button>
+        <button id="btn-recycle" class="btn danger"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉCRAN VS -->
+  <section id="screen-vs" class="screen hidden">
+    <div class="vs-wrap">
+      <div class="vs-card mine"><canvas id="vs-me" width="300" height="170"></canvas><div id="vs-me-name" class="vs-name"></div></div>
+      <div class="vs-badge">VS</div>
+      <div class="vs-card theirs"><canvas id="vs-them" width="300" height="170"></canvas><div id="vs-them-name" class="vs-name"></div></div>
+    </div>
+    <div class="vs-buttons">
+      <button id="btn-vs-back" class="btn secondary">← Retour</button>
+      <button id="btn-vs-go" class="btn primary">GO !</button>
+    </div>
+  </section>
+
+  <!-- ÉCRAN COMBAT -->
+  <section id="screen-battle" class="screen hidden">
+    <canvas id="battle-canvas"></canvas>
+    <div id="battle-hud">
+      <div class="hud-row">
+        <div class="fighter left"><div id="hud-name-l" class="hud-name"></div><div class="hpbar"><div id="hp-l" class="hpfill me"></div></div></div>
+        <div id="hud-timer">45</div>
+        <div class="fighter right"><div id="hud-name-r" class="hud-name"></div><div class="hpbar"><div id="hp-r" class="hpfill foe"></div></div></div>
+      </div>
+    </div>
+    <div id="battle-msg" class="battle-msg hidden"></div>
+  </section>
+
+  <!-- ÉCRAN RÉSULTAT -->
+  <section id="screen-result" class="screen hidden">
+    <div class="result-card">
+      <div id="result-title" class="result-title"></div>
+      <div id="result-sub" class="result-sub"></div>
+      <div id="result-rewards" class="result-rewards"></div>
+      <div id="reward-part" class="reward-part hidden">
+        <div class="reward-part-glow"></div>
+        <canvas id="reward-canvas" width="160" height="120"></canvas>
+        <div id="reward-name"></div>
+      </div>
+      <button id="btn-result-ok" class="btn primary">Continuer</button>
+    </div>
+  </section>
+
+</div>
+<script src="js/lib/matter.min.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
