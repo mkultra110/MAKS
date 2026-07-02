@@ -1,0 +1,56 @@
+# Compilation iOS dans le cloud avec Codemagic (https://codemagic.io) — AUCUN Mac requis.
+#
+# Mode d'emploi (quand tu auras le compte Apple Developer à 99 €/an) :
+#  1. Crée un compte gratuit sur codemagic.io et connecte ce dépôt GitHub.
+#  2. Dans Codemagic → Teams → Integrations → App Store Connect :
+#     ajoute une clé API App Store Connect (créée sur appstoreconnect.apple.com
+#     → Utilisateurs et accès → Clés). Nomme l'intégration "appstore".
+#  3. Active "iOS code signing automatique" dans les paramètres du workflow —
+#     Codemagic crée et gère les certificats à ta place.
+#  4. Lance le workflow "ios-appstore" : il compile, signe et ENVOIE le build
+#     sur App Store Connect / TestFlight tout seul.
+#  5. Il ne te reste que la fiche à remplir (docs/APPSTORE-FICHE.md) et le
+#     bouton « Soumettre pour vérification ».
+
+workflows:
+  ios-appstore:
+    name: MAKS iOS → App Store Connect
+    max_build_duration: 45
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: appstore
+    environment:
+      vars:
+        BUNDLE_ID: "com.maks.arena"
+        XCODE_SCHEME: "App"
+      node: 20
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.maks.arena
+    scripts:
+      - name: Installer les dépendances
+        script: npm install
+      - name: Créer le projet iOS
+        script: npx cap add ios
+      - name: Générer icônes et écrans de lancement
+        script: npx @capacitor/assets generate --ios
+      - name: Synchroniser le jeu dans l'app
+        script: npx cap sync ios
+      - name: Incrémenter le numéro de build
+        script: |
+          cd ios/App
+          agvtool new-version -all $(($(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" || echo 0) + 1))
+      - name: Compiler et signer l'IPA
+        script: |
+          xcode-project use-profiles
+          xcode-project build-ipa \
+            --workspace ios/App/App.xcworkspace \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
