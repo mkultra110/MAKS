@@ -150,6 +150,14 @@ export function leagueIndex(stage) {
   return i;
 }
 
+// ---- Sets de pièces : équipe ≥3 types d'un set pour activer son bonus ----
+export const SETS = {
+  pirate:  { name: 'Pirate',     parts: ['whale', 'spiked', 'saw'],             bonus: { melee: 1.15 },  desc: '+15% dégâts de mêlée' },
+  sniper:  { name: 'Sniper',     parts: ['surfer', 'tiny', 'laser', 'minigun'], bonus: { ranged: 1.12 }, desc: '+12% dégâts à distance' },
+  tank:    { name: 'Forteresse', parts: ['titan', 'big', 'drill', 'armor'],     bonus: { hp: 1.15 },     desc: '+15% PV max' },
+  voltige: { name: 'Voltige',    parts: ['pony', 'tiny', 'stinger', 'booster'], bonus: { speed: 1.15 },  desc: '+15% vitesse' },
+};
+
 // ---- Peintures de châssis ----
 export const PAINTS = [
   '#3f9bff', '#9a63ff', '#35d97c', '#ff8f31', '#ff5f9e',

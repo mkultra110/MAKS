@@ -2,7 +2,7 @@
 import {
   BODIES, WHEELS, WEAPONS, GADGETS, partDef, partMult, bodyEnergy,
   newPart, seededRng, pick, randomPart, rollStars, CAT_NAMES,
-  LEAGUES, leagueIndex,
+  LEAGUES, leagueIndex, SETS,
 } from './data.js';
 
 const SAVE_KEY = 'maks_save_v1';
@@ -120,8 +120,25 @@ export function computeCarStats(lo) {
     if (g.type === 'booster') hasBooster = true;
     if (g.type === 'backpedal') hasBackpedal = true;
   }
+  // bonus de set PV (les bonus melee/ranged/speed s'appliquent dans le combat)
+  for (const s of activeSets(lo)) {
+    if (s.active && s.bonus.hp) hp *= s.bonus.hp;
+  }
   const capacity = lo.body ? bodyEnergy(lo.body) : 0;
   return { hp: Math.round(hp), atk: Math.round(atk), used, capacity, heal, hasBooster, hasBackpedal };
+}
+
+// État des sets pour un montage : nombre de types équipés par set.
+export function activeSets(lo) {
+  const types = new Set();
+  if (lo.body) types.add(lo.body.type);
+  for (const p of [...lo.wheels, ...lo.weapons, ...lo.gadgets]) {
+    if (p) types.add(p.type);
+  }
+  return Object.entries(SETS).map(([key, s]) => {
+    const count = s.parts.filter(t => types.has(t)).length;
+    return { key, name: s.name, desc: s.desc, count, need: 3, active: count >= 3, bonus: s.bonus };
+  });
 }
 
 export function loadoutValid(lo) {

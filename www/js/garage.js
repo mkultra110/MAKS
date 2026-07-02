@@ -1,7 +1,7 @@
 // Écran garage : aperçu 3D du véhicule, emplacements, inventaire, fiche pièce.
 import * as THREE from 'three';
 import { KIND_LABEL, partDef, partStats, maxLevel, upgradeCost, recycleValue, COPILOTS, PAINTS, LEAGUES, leagueIndex } from './data.js';
-import { state, save, isEquipped, buildLoadout, computeCarStats, loadoutValid, equip, unequip, removePart, getPart, MEDALS_TO_ADVANCE } from './state.js';
+import { state, save, isEquipped, buildLoadout, computeCarStats, loadoutValid, activeSets, equip, unequip, removePart, getPart, MEDALS_TO_ADVANCE } from './state.js';
 import { buildCarSpec } from './car.js';
 import { createRenderer, createStudioScene, disposeModel } from './render3d.js';
 import { createCarModel, poseCarStatic } from './models3d.js';
@@ -235,7 +235,35 @@ export function renderGarage() {
   refreshPreviewModel(lo);
   startPreview();
   renderSlots(lo);
+  renderSets(lo);
   renderInventory();
+}
+
+// Badges des sets de pièces (affichés dès 2 pièces du set équipées).
+let knownActiveSets = null;
+function renderSets(lo) {
+  const row = document.getElementById('sets-row');
+  if (!row) return;
+  row.innerHTML = '';
+  const sets = activeSets(lo);
+  for (const s of sets) {
+    if (s.count < 2) continue;
+    const chip = document.createElement('div');
+    chip.className = 'set-chip' + (s.active ? ' set-active' : '');
+    chip.textContent = `⚙ ${s.name} ${Math.min(s.count, s.need)}/${s.need}`;
+    chip.title = s.desc;
+    row.appendChild(chip);
+  }
+  // toast à l'activation d'un set (pas au premier rendu)
+  const nowActive = sets.filter(s => s.active).map(s => s.key);
+  if (knownActiveSets !== null) {
+    for (const s of sets) {
+      if (s.active && !knownActiveSets.includes(s.key)) {
+        garageToast(`Set ${s.name} activé : ${s.desc} !`);
+      }
+    }
+  }
+  knownActiveSets = nowActive;
 }
 
 function renderSlots(lo) {

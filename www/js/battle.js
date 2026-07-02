@@ -1,7 +1,7 @@
 // Moteur de combat : physique Matter.js + rendu 3D Three.js + IA automatique.
 import * as THREE from 'three';
 import { buildCarSpec } from './car.js';
-import { copilotMods } from './state.js';
+import { copilotMods, activeSets } from './state.js';
 import { COPILOTS, WHEELS, partMult } from './data.js';
 import { createRenderer, disposeModel, envMapFor } from './render3d.js';
 import { createCarModel, createArena, createDeathWall, skyTexture, pulseLaserLens, ARENA_THEMES, S } from './models3d.js';
@@ -33,6 +33,13 @@ const to3y = y => (GROUND_Y - y) * S;
 function makeCar(engine, lo, opts) {
   const { x, dir, team, name, statBoost = 1, dmgBoost = null, copilot = null } = opts;
   const mods = copilotMods(copilot);
+  // bonus des sets de pièces (le bonus hp est déjà dans computeCarStats)
+  for (const s of activeSets(lo)) {
+    if (!s.active) continue;
+    if (s.bonus.melee) mods.melee *= s.bonus.melee;
+    if (s.bonus.ranged) mods.ranged *= s.bonus.ranged;
+    if (s.bonus.speed) mods.speed *= s.bonus.speed;
+  }
   const spec = buildCarSpec(lo);
   const group = Body.nextGroup(true);
   const bw = spec.body.w, bh = spec.body.h;
@@ -432,6 +439,11 @@ function applyDamage(battle, car, dmg, at) {
   if (car.dead || (battle.finished && battle.endTimer > 0.4)) return;
   car.hp -= dmg;
   car.hitFlash = 0.14; // flash rouge du véhicule touché
+  // le commentateur s'enflamme au premier sang
+  if (!battle.firstBlood) {
+    battle.firstBlood = true;
+    showToast(battle, 'PREMIER SANG !');
+  }
   const crit = dmg >= 25;
   battle.floaters.push({
     x: at.x + (Math.random() - 0.5) * 20, y: at.y - 30, z: car.z,
@@ -521,6 +533,9 @@ function killCar(battle, car, cause) {
     reason: cause === 'mur' ? 'Écrasé par le mur !' : (cause === 'retourné' ? 'KO — retourné !' : 'Destruction totale !'),
   };
   showMsg(battle, playerWon ? 'K.O. !' : 'PERDU…');
+  // punchline du commentateur
+  const LINES = ['QUEL CARNAGE !', 'DÉMOLITION TOTALE !', 'ADIEU LA CARROSSERIE !', 'ÇA VA LAISSER DES TRACES !', 'ET ÇA REPART EN CROQUETTES !'];
+  showToast(battle, LINES[Math.floor(Math.random() * LINES.length)]);
 }
 
 function showToast(battle, text) {

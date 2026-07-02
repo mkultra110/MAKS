@@ -1,6 +1,6 @@
 // Point d'entrée : navigation entre écrans et déroulé d'une partie.
 import * as THREE from 'three';
-import { partDef, upgradeCost, LEAGUES, leagueIndex } from './data.js';
+import { partDef, upgradeCost, LEAGUES, leagueIndex, SETS } from './data.js';
 import {
   state, load, buildLoadout, computeCarStats, makeOpponent, makeRoster,
   winRewards, defeatReward, prestigeBoost, save, ROSTER_SIZE, MEDALS_TO_ADVANCE,
@@ -439,8 +439,11 @@ function onBattleEnd(result) {
       partEl.classList.remove('hidden');
       document.getElementById('reward-img').src = partThumb(shown);
       const extra = r.extraParts && r.extraParts.length > 1 ? ` (+${r.extraParts.length - (r.part ? 0 : 1)} autres !)` : '';
+      // écho de collection : le drop appartient-il à un set ?
+      const setOf = Object.values(SETS).find(s => s.parts.includes(shown.type));
+      const setNote = setOf ? ` · Set ${setOf.name} !` : '';
       document.getElementById('reward-name').textContent =
-        `${partDef(shown).name} ${'★'.repeat(shown.stars)} · niv. ${shown.level}${extra}`;
+        `${partDef(shown).name} ${'★'.repeat(shown.stars)} · niv. ${shown.level}${extra}${setNote}`;
     }
     show('screen-result');
     confetti();
