@@ -1,6 +1,6 @@
 // Vignettes 3D (pièces et véhicules) rendues hors-écran, avec cache.
 import * as THREE from 'three';
-import { createRenderer, studioLights, disposeModel, envMapFor } from './render3d.js';
+import { createRenderer, studioLights, disposeModel } from './render3d.js';
 import { createPartModel, createCarModel, poseCarStatic, catHead } from './models3d.js';
 import { buildCarSpec } from './car.js';
 import { COPILOTS } from './data.js';
@@ -16,14 +16,11 @@ function ensure() {
   renderer.setPixelRatio(1);
   scene = new THREE.Scene();
   scene.background = null;
-  scene.environment = envMapFor(renderer);
-  scene.environmentIntensity = 0.6;
   studioLights(scene);
   podium = new THREE.Mesh(
     new THREE.CylinderGeometry(2.6, 2.8, 0.3, 40),
-    new THREE.MeshStandardMaterial({ color: 0x272458, metalness: 0.5, roughness: 0.4 })
+    new THREE.MeshToonMaterial({ color: 0xffb800 })
   );
-  podium.receiveShadow = true;
   scene.add(podium);
   camera = new THREE.PerspectiveCamera(32, 320 / 240, 0.1, 100);
   holder = new THREE.Group();

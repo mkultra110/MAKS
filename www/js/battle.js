@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import { buildCarSpec } from './car.js';
 import { copilotMods, activeSets } from './state.js';
 import { COPILOTS, WHEELS, partMult } from './data.js';
-import { createRenderer, disposeModel, envMapFor } from './render3d.js';
-import { createCarModel, createArena, createDeathWall, skyTexture, pulseLaserLens, ARENA_THEMES, S } from './models3d.js';
+import { createRenderer, disposeModel, makeBlobShadow, INK } from './render3d.js';
+import { createCarModel, createArena, createDeathWall, skyTexture, pulseLaserLens, toonMat, ARENA_THEMES, S } from './models3d.js';
 import {
   sfxHit, sfxBoom, sfxLaser, sfxShot, sfxCount, sfxGo, sfxSiren, sfxClang,
   startBattleAudio, stopBattleAudio, setEngineSpeed, crowdExcite,
@@ -140,29 +140,19 @@ function buildScene(battle, themeIndex = 0) {
   const theme = ARENA_THEMES[Math.min(themeIndex, ARENA_THEMES.length - 1)];
   const scene = new THREE.Scene();
   scene.background = skyTexture(theme);
-  scene.environment = envMapFor(renderer, theme);
-  scene.environmentIntensity = 0.55;
   scene.fog = new THREE.Fog(theme.fog, 55, 140);
 
-  const hemi = new THREE.HemisphereLight(0xcfd6ff, 0x241a38, 0.55);
-  scene.add(hemi);
-  const key = new THREE.DirectionalLight(0xfff2dd, 2.2);
-  key.position.set(6, 14, 9);
-  key.castShadow = true;
-  key.shadow.mapSize.set(1024, 1024);
-  key.shadow.camera.left = -16; key.shadow.camera.right = 16;
-  key.shadow.camera.top = 12; key.shadow.camera.bottom = -6;
-  key.shadow.bias = -0.0015;
-  scene.add(key);
-  const rim = new THREE.DirectionalLight(0x7a9dff, 0.9);
-  rim.position.set(-8, 6, -9);
-  scene.add(rim);
+  // éclairage cartoon : une ambiance + un soleil, les aplats font le reste
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+  sun.position.set(6, 14, 9);
+  scene.add(sun);
 
   battle.env = createArena(scene, ARENA_W, theme);
 
   // meshes du terrain (alignés sur les corps statiques Matter)
-  const terrainMat = new THREE.MeshStandardMaterial({ color: theme.track, roughness: 0.8, metalness: 0.1 });
-  const edgeMat = new THREE.MeshBasicMaterial({ color: 0xffc93e, transparent: true, opacity: 0.5 });
+  const terrainMat = toonMat(theme.track);
+  const edgeMat = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
   for (const t of battle.terrain) {
     if (t.type === 'bump') {
       const cyl = new THREE.Mesh(new THREE.CylinderGeometry(t.r * S, t.r * S, 6, 36), terrainMat);
@@ -198,6 +188,8 @@ function buildScene(battle, themeIndex = 0) {
     car.model = model.userData;
     car.yaw = yaw;
     for (const wm of car.model.wheelMeshes) scene.add(wm);
+    car.blob = model.userData.blob;
+    scene.add(car.blob);
   }
 
   // murs de la mort
@@ -219,13 +211,58 @@ function buildScene(battle, themeIndex = 0) {
   // post-processing : bloom léger (lasers, phares, explosions, néons)
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.65, 0.82);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.35, 0.5, 0.92);
   composer.addPass(bloom);
   const output = new OutputPass();
   composer.addPass(output);
   battle.composer = composer;
   battle.bloomPass = bloom;
   battle.outputPass = output;
+}
+
+// ---------- onomatopées cartoon : mots sur étoile-explosion ----------
+const WORD_TEX = {};
+function wordTexture(word) {
+  if (WORD_TEX[word]) return WORD_TEX[word];
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 220;
+  const x = c.getContext('2d');
+  x.translate(160, 110);
+  x.rotate(-0.09);
+  // étoile-explosion 12 branches
+  x.fillStyle = '#FFB800';
+  x.strokeStyle = '#26183A';
+  x.lineWidth = 7;
+  x.beginPath();
+  for (let i = 0; i < 24; i++) {
+    const a2 = (i / 24) * Math.PI * 2;
+    const rr = i % 2 ? 62 : 100;
+    x.lineTo(Math.cos(a2) * rr * 1.35, Math.sin(a2) * rr * 0.82);
+  }
+  x.closePath();
+  x.fill(); x.stroke();
+  // le mot
+  x.font = "800 56px 'Baloo 2', sans-serif";
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.strokeStyle = '#26183A'; x.lineWidth = 10; x.lineJoin = 'round';
+  x.strokeText(word, 0, 2);
+  x.fillStyle = '#FFFFFF';
+  x.fillText(word, 0, 2);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.userData.shared = true;
+  WORD_TEX[word] = tex;
+  return tex;
+}
+
+function spawnWord(battle, x2, y2, z, word) {
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: wordTexture(word), transparent: true, depthWrite: false,
+  }));
+  sprite.position.set(to3x(x2), to3y(y2) + 0.6, z + 1.2);
+  sprite.scale.setScalar(0.001);
+  battle.scene.add(sprite);
+  battle.words.push({ sprite, life: 0.55, maxLife: 0.55 });
 }
 
 // ---------- effets : jets de particules (un burst = un THREE.Points) ----------
@@ -306,7 +343,7 @@ export function startBattle(config) {
 
   const battle = {
     engine, canvas, cars: [me, foe], ground, wallL, wallR, terrain,
-    projectiles: [], beams: [], bursts: [], waves: [], floaters: [], debris: [],
+    projectiles: [], beams: [], bursts: [], waves: [], floaters: [], debris: [], words: [],
     time: -3.2, wallsDeadly: false,
     shake: 0, slowmo: 1, hitStop: 0, acc: 0,
     // pipeline caméra : impulsions accumulées, décrues chaque frame
@@ -452,7 +489,7 @@ function handleClashPair(battle, pair) {
     Body.setVelocity(car.chassis, { x: car.chassis.velocity.x - car.dir * 3.4, y: -1.6 });
   }
   sfxClang();
-  if (battle.clashCount % 3 === 1) showToast(battle, 'CLASH !');
+  spawnWord(battle, sup.x, sup.y - 30, 0, 'CLANG !');
 }
 
 // Roues cloutées : elles mordent tout ce qu'elles touchent chez l'adversaire.
@@ -492,6 +529,7 @@ function handleProjectilePair(battle, pair) {
       hitStop(battle, 0.07, 0.05); // micro-freeze : l'impact se sent
       battle.rollKick += 0.055 * (to3x(pos.x) < battle.camX ? -1 : 1);
       battle.fovKick = 6; // punch de focale
+      spawnWord(battle, pos.x, pos.y - 30, proj.z, 'BOOM !');
       for (const car of battle.cars) {
         if (car === proj.owner || car.dead) continue;
         const d = Vector.magnitude(Vector.sub(car.chassis.position, pos));
@@ -530,9 +568,12 @@ function applyDamage(battle, car, dmg, at) {
     x: at.x + (Math.random() - 0.5) * 20, y: at.y - 30, z: car.z,
     vy: -90, life: 0.85, text: '-' + Math.max(1, Math.round(dmg)),
     scale: crit ? 2.4 : 1.7, // pope puis se stabilise
-    color: crit ? '#ffd23e' : (car.team === 0 ? '#ff8fa4' : '#ffe08a'),
+    color: crit ? '#FFB800' : '#FF4D5E',
   });
-  if (crit) shockwave(battle, at.x, at.y, car.z, 0xffd23e);
+  if (crit) {
+    shockwave(battle, at.x, at.y, car.z, 0xffd23e);
+    spawnWord(battle, at.x, at.y - 40, car.z, 'BAM !');
+  }
   // dutch angle sur les gros impacts
   if (dmg > 14) battle.rollKick += 0.055 * (to3x(at.x) < battle.camX ? -1 : 1);
   // flash de douleur sur la barre de PV du HUD
@@ -563,10 +604,8 @@ function hitStop(battle, duration, factor) {
 
 // Débris de carrosserie projetés au KO (animés à la main, hors physique 2D).
 function spawnDebris(battle, car) {
-  const debrisMat = new THREE.MeshStandardMaterial({
-    color: car.model.bodyMat.color, roughness: 0.6, metalness: 0.3,
-  });
-  const darkMat = new THREE.MeshStandardMaterial({ color: 0x3a3f55, roughness: 0.7, metalness: 0.5 });
+  const debrisMat = toonMat(car.model.bodyMat.color.getHex());
+  const darkMat = toonMat(0x3a3f55);
   const p = car.chassis.position;
   for (let i = 0; i < 12; i++) {
     const s = 0.1 + Math.random() * 0.2;
@@ -617,6 +656,7 @@ function killCar(battle, car, cause) {
   // punchline du commentateur
   const LINES = ['QUEL CARNAGE !', 'DÉMOLITION TOTALE !', 'ADIEU LA CARROSSERIE !', 'ÇA VA LAISSER DES TRACES !', 'ET ÇA REPART EN CROQUETTES !'];
   showToast(battle, LINES[Math.floor(Math.random() * LINES.length)]);
+  spawnWord(battle, p.x, p.y - 50, car.z, 'KRAK !!');
 }
 
 function showToast(battle, text) {
@@ -874,11 +914,11 @@ function fireProjectile(battle, owner, from, to, opt) {
   if (opt.type === 'rocket') {
     mesh = new THREE.Group();
     const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.5, 8),
-      new THREE.MeshStandardMaterial({ color: 0xd8dce8, metalness: 0.7, roughness: 0.35 }));
+      toonMat(0xc9d2e8));
     tube.rotation.z = Math.PI / 2;
     mesh.add(tube);
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.18, 8),
-      new THREE.MeshStandardMaterial({ color: 0xff4b5e, roughness: 0.4 }));
+      toonMat(0xff4d5e));
     tip.rotation.z = -Math.PI / 2;
     tip.position.x = 0.32;
     mesh.add(tip);
@@ -1017,6 +1057,20 @@ function updateEffects(battle, dt) {
     if (car.hitFlash > 0) car.hitFlash = Math.max(0, car.hitFlash - dt);
   }
 
+  // onomatopées : pop d'échelle « on twos », disparition sèche
+  for (const w of battle.words) {
+    w.life -= dt;
+    const age = w.maxLife - w.life;
+    let s = age < 0.09 ? (age / 0.09) * 1.45 : (age < 0.22 ? 1.45 - (age - 0.09) * 2.6 : 1.1);
+    s = Math.max(0.001, Math.round(s * 8) / 8); // quantifie l'anim (12 fps feel)
+    w.sprite.scale.set(3.2 * s, 2.2 * s, 1);
+    if (w.life <= 0) {
+      battle.scene.remove(w.sprite);
+      w.sprite.material.dispose();
+    }
+  }
+  battle.words = battle.words.filter(w => w.life > 0);
+
   battle.flash.intensity = Math.max(0, battle.flash.intensity - 350 * dt);
   battle.shake = Math.max(0, battle.shake - 60 * dt);
 }
@@ -1102,16 +1156,24 @@ function syncCar(battle, car, t, dt) {
       bodyMat.emissiveIntensity = 0;
     }
   }
-  // animations : scies/perceuses qui tournent, flammes qui vacillent
+  // ombre blob : suit la voiture au sol, rétrécit quand elle décolle
+  if (car.blob) {
+    const alt = Math.max(0, car.yaw.position.y - 0.75);
+    const k = Math.max(0.45, 1.15 - alt * 0.28);
+    car.blob.position.set(car.yaw.position.x, 0.03, car.z);
+    car.blob.scale.set(1.6 * k, k, 1);
+  }
+  // animations quantifiées « on twos » (12 fps) : le détail qui fait dessin animé
+  const tq = Math.floor(t * 12) / 12;
   for (const anim of car.model.spins) {
     for (const s of anim.spin) {
-      if (anim.axis === 'x') s.rotation.x = t * 20;
-      else s.rotation.z = -t * 16;
+      if (anim.axis === 'x') s.rotation.x = tq * 20;
+      else s.rotation.z = -tq * 16;
     }
   }
   for (const f of car.model.flames) {
-    const k = 0.8 + Math.sin(t * 31 + car.team) * 0.25;
-    f.scale.set(k, 0.9 + Math.sin(t * 43) * 0.3, k);
+    const k = 0.8 + Math.sin(tq * 31 + car.team) * 0.25;
+    f.scale.set(k, 0.9 + Math.sin(tq * 43) * 0.3, k);
   }
 }
 
@@ -1219,7 +1281,8 @@ function render(battle, t, dt) {
     for (let i = 0; i < crowd.data.length; i++) {
       const f = crowd.data[i];
       const excite = battle.finished ? 2.2 : 1;
-      crowd.dummy.position.set(f.x, f.y + Math.max(0, Math.sin(t * f.speed * excite + f.phase)) * f.amp * excite, f.z);
+      const tq2 = Math.floor(t * 12) / 12;
+      crowd.dummy.position.set(f.x, f.y + Math.max(0, Math.sin(tq2 * f.speed * excite + f.phase)) * f.amp * excite, f.z);
       crowd.dummy.updateMatrix();
       crowd.mesh.setMatrixAt(i, crowd.dummy.matrix);
     }
@@ -1250,7 +1313,7 @@ function renderOverlay(battle) {
     const [sx, sy] = project(p.x, p.y - car.spec.body.h / 2 - 46, car.z);
     const bw = 0.062 * W;
     const bh2 = 8 * battle.dpr / 2;
-    ctx.fillStyle = 'rgba(4,4,14,.55)';
+    ctx.fillStyle = '#26183A';
     ctx.beginPath(); ctx.roundRect(sx - bw / 2, sy, bw, bh2 + 4, 4); ctx.fill();
     ctx.fillStyle = '#ffb347';
     ctx.beginPath(); ctx.roundRect(sx - bw / 2 + 1.5, sy + 1.5, (bw - 3) * (car.ghostRatio ?? 1), bh2 + 1, 3); ctx.fill();
@@ -1266,8 +1329,8 @@ function renderOverlay(battle) {
     const [sx, sy] = project(f.x, f.y, f.z);
     ctx.font = `800 ${Math.round(fs * (f.scale || 1))}px 'Baloo 2', sans-serif`;
     ctx.globalAlpha = Math.min(1, f.life * 2.2);
-    ctx.strokeStyle = 'rgba(0,0,8,.7)';
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#26183A';
+    ctx.lineWidth = 5;
     ctx.strokeText(f.text, sx, sy);
     ctx.fillStyle = f.color;
     ctx.fillText(f.text, sx, sy);

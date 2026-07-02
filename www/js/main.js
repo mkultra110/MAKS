@@ -36,6 +36,13 @@ function show(id) {
     renderDailyBanner();
   } else stopPreview();
   if (id !== 'screen-splash') stopSplash();
+  // iris wipe cartoon
+  const iris = document.getElementById('iris');
+  if (iris) {
+    iris.classList.remove('play');
+    void iris.offsetWidth;
+    iris.classList.add('play');
+  }
 }
 
 // ---------- écran d'accueil : vitrine 3D ----------
@@ -93,7 +100,7 @@ function confetti() {
   canvas.width = canvas.clientWidth * dpr;
   canvas.height = canvas.clientHeight * dpr;
   const ctx = canvas.getContext('2d');
-  const colors = ['#ffc93e', '#ff5d7a', '#4fd7ff', '#4de08a', '#8f7bff', '#fff'];
+  const colors = ['#FFB800', '#FF4D5E', '#49C4F0', '#2FD573', '#FFF6E0', '#26183A'];
   const parts = [];
   for (let i = 0; i < 130; i++) {
     parts.push({
@@ -351,6 +358,7 @@ function onBetEnd(result) {
   btnNext.textContent = 'Nouveau pari';
   btnNext.classList.remove('hidden');
   btnNext.dataset.mode = 'bet';
+  document.getElementById('sunburst').classList.toggle('hidden', !won);
   show('screen-result');
   if (won) confetti();
 }
@@ -507,6 +515,7 @@ function onBattleEnd(result) {
       document.getElementById('reward-name').textContent =
         `${partDef(shown).name} ${'★'.repeat(shown.stars)} · niv. ${shown.level}${extra}${setNote}`;
     }
+    document.getElementById('sunburst').classList.remove('hidden');
     show('screen-result');
     confetti();
   } else {
@@ -527,6 +536,7 @@ function onBattleEnd(result) {
     }
     document.getElementById('result-sub').textContent = sub;
     document.getElementById('reward-coins').textContent = '+' + coins;
+    document.getElementById('sunburst').classList.add('hidden');
     if (!gauntlet) {
       btnNext.textContent = '🔄 Revanche !';
       btnNext.classList.remove('hidden');

@@ -1,6 +1,85 @@
 // Rendu 3D partagé : création de renderers, scènes studio, éclairages.
+// Direction artistique « SAMEDI MATIN » : cel-shading 3 tons, contours encre,
+// couleurs plates exactes (NoToneMapping), ombres en blobs.
 import * as THREE from 'three';
+import { mergeGeometries, mergeVertices } from './lib/BufferGeometryUtils.js';
 import { skyTexture } from './models3d.js';
+
+export const INK = 0x26183a; // l'encre signature (jamais du noir pur)
+
+// gradientMap 3 tons partagée : ombre 41%, mi-ton 76%, lumière 100%
+let GRAD3 = null, GRAD2 = null;
+export function toonGradient(hard = false) {
+  if (hard) {
+    if (!GRAD2) {
+      GRAD2 = new THREE.DataTexture(new Uint8Array([140, 255]), 2, 1, THREE.RedFormat);
+      GRAD2.minFilter = GRAD2.magFilter = THREE.NearestFilter;
+      GRAD2.needsUpdate = true;
+      GRAD2.userData.shared = true;
+    }
+    return GRAD2;
+  }
+  if (!GRAD3) {
+    GRAD3 = new THREE.DataTexture(new Uint8Array([105, 194, 255]), 3, 1, THREE.RedFormat);
+    GRAD3.minFilter = GRAD3.magFilter = THREE.NearestFilter;
+    GRAD3.needsUpdate = true;
+    GRAD3.userData.shared = true;
+  }
+  return GRAD3;
+}
+
+// Contour « inverted hull » fusionné : UN seul mesh de contour par groupe,
+// épaisseur constante en unités monde (pas un scale qui amincit les grosses pièces).
+export function outlineForGroup(group, thickness = 0.022) {
+  group.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const geos = [];
+  group.traverse(o => {
+    if (!o.isMesh || o.userData.noOutline || o.userData.noShadow) return;
+    if (o.material?.transparent) return;
+    // les sous-groupes animés (scie…) gèrent leur propre contour
+    for (let p = o; p && p !== group; p = p.parent) {
+      if (p.userData.skipInParentOutline) return;
+    }
+    const g = o.geometry.clone();
+    const rel = new THREE.Matrix4().copy(inv).multiply(o.matrixWorld);
+    g.applyMatrix4(rel);
+    // ne garder que la position (attributs homogènes pour la fusion)
+    const pos = g.getAttribute('position');
+    const bare = new THREE.BufferGeometry();
+    bare.setAttribute('position', pos);
+    if (g.index) bare.setIndex(g.index);
+    geos.push(bare);
+  });
+  if (!geos.length) return null;
+  let merged = mergeGeometries(geos.map(g => g.toNonIndexed ? g.toNonIndexed() : g), false);
+  merged = mergeVertices(merged);           // évite que le hull éclate aux arêtes dures
+  merged.computeVertexNormals();
+  const mat = new THREE.MeshBasicMaterial({ color: INK, side: THREE.BackSide });
+  mat.onBeforeCompile = shader => {
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `vec3 transformed = position + normal * ${thickness.toFixed(4)};`
+    );
+  };
+  const mesh = new THREE.Mesh(merged, mat);
+  mesh.userData.noOutline = true;
+  mesh.userData.noShadow = true;
+  return mesh;
+}
+
+// Ombre cartoon : ellipse d'encre plate posée au sol.
+export function makeBlobShadow(radius = 1.4) {
+  const blob = new THREE.Mesh(
+    new THREE.CircleGeometry(radius, 24),
+    new THREE.MeshBasicMaterial({ color: INK, transparent: true, opacity: 0.28, depthWrite: false })
+  );
+  blob.rotation.x = -Math.PI / 2;
+  blob.scale.x = 1.6;
+  blob.userData.noOutline = true;
+  blob.userData.noShadow = true;
+  return blob;
+}
 
 // Environnement de réflexions (PMREM) généré depuis le ciel procédural —
 // c'est lui qui donne aux peintures et métaux leurs vrais reflets.
@@ -19,13 +98,12 @@ export function envMapFor(renderer, theme = null) {
   return ENV_CACHE[key];
 }
 
-export function createRenderer(canvas, { shadows = true, alpha = false, antialias = true } = {}) {
+export function createRenderer(canvas, { shadows = false, alpha = false, antialias = true } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias, alpha });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  // cartoon : ombres blob (pas de shadow map) et couleurs plates exactes
   renderer.shadowMap.enabled = shadows;
-  renderer.shadowMap.type = THREE.PCFShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.12;
+  renderer.toneMapping = THREE.NoToneMapping;
   return renderer;
 }
 
@@ -57,56 +135,48 @@ export function sizeToCanvas(renderer, camera) {
   camera.updateProjectionMatrix();
 }
 
-// Éclairage « plateau » à 3 points, réutilisé partout.
-export function studioLights(scene, { intensity = 1 } = {}) {
-  const hemi = new THREE.HemisphereLight(0xcfd6ff, 0x2a1f3d, 0.85 * intensity);
-  scene.add(hemi);
-  const key = new THREE.DirectionalLight(0xfff2dd, 2.4 * intensity);
-  key.position.set(4, 8, 6);
-  key.castShadow = true;
-  key.shadow.mapSize.set(1024, 1024);
-  key.shadow.camera.left = -8; key.shadow.camera.right = 8;
-  key.shadow.camera.top = 8; key.shadow.camera.bottom = -8;
-  key.shadow.bias = -0.002;
-  scene.add(key);
-  const rim = new THREE.DirectionalLight(0x7a9dff, 1.1 * intensity);
-  rim.position.set(-6, 3, -5);
-  scene.add(rim);
-  const fill = new THREE.PointLight(0xff9d5e, 12 * intensity, 20);
-  fill.position.set(-3, 1.2, 4);
-  scene.add(fill);
-  return { hemi, key, rim, fill };
+// Éclairage cartoon : une ambiance + un soleil, rien d'autre —
+// le rim bleu et le fill orange polluaient les aplats.
+export function studioLights(scene) {
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+  sun.position.set(4, 10, 6);
+  scene.add(sun);
+  return { sun };
 }
 
-// Scène « studio » : podium circulaire + fond dégradé, pour garage/vitrines.
+// Scène « studio » : podium jouet jaune sur herbe, ciel de plein jour.
 export function createStudioScene(renderer = null) {
   const scene = new THREE.Scene();
   scene.background = skyTexture();
-  if (renderer) {
-    scene.environment = envMapFor(renderer);
-    scene.environmentIntensity = 0.6;
-  }
   studioLights(scene);
 
   const podium = new THREE.Mesh(
-    new THREE.CylinderGeometry(3.4, 3.7, 0.36, 48),
-    new THREE.MeshStandardMaterial({ color: 0x272458, metalness: 0.5, roughness: 0.4 })
+    new THREE.CylinderGeometry(3.4, 3.7, 0.42, 48),
+    new THREE.MeshToonMaterial({ color: 0xffb800, gradientMap: toonGradient() })
   );
-  podium.position.y = -0.18;
-  podium.receiveShadow = true;
+  podium.position.y = -0.21;
   scene.add(podium);
-  const ringGeo = new THREE.TorusGeometry(3.55, 0.045, 8, 64);
-  const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffc93e }));
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(3.55, 0.06, 8, 64),
+    new THREE.MeshBasicMaterial({ color: INK })
+  );
   ring.rotation.x = Math.PI / 2;
   ring.position.y = 0.005;
   scene.add(ring);
+  // jupe d'encre du podium (fait office de contour)
+  const skirt = new THREE.Mesh(
+    new THREE.CylinderGeometry(3.74, 3.74, 0.1, 48),
+    new THREE.MeshBasicMaterial({ color: INK })
+  );
+  skirt.position.y = -0.4;
+  scene.add(skirt);
   const floor = new THREE.Mesh(
     new THREE.CircleGeometry(30, 32),
-    new THREE.MeshStandardMaterial({ color: 0x141232, roughness: 0.95 })
+    new THREE.MeshToonMaterial({ color: 0x3fbf63, gradientMap: toonGradient() })
   );
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -0.36;
-  floor.receiveShadow = true;
+  floor.position.y = -0.44;
   scene.add(floor);
   return scene;
 }
