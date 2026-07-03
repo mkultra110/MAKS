@@ -81,6 +81,20 @@
     <symbol id="i-back" viewBox="0 0 24 24">
       <path d="M14.5 5.5L8 12l6.5 6.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24">
+      <path d="M10.3 2h3.4l.5 2.6a7.6 7.6 0 012 1.2l2.5-.9 1.7 3-2 1.7a7.7 7.7 0 010 2.8l2 1.7-1.7 3-2.5-.9a7.6 7.6 0 01-2 1.2l-.5 2.6h-3.4l-.5-2.6a7.6 7.6 0 01-2-1.2l-2.5.9-1.7-3 2-1.7a7.7 7.7 0 010-2.8l-2-1.7 1.7-3 2.5.9a7.6 7.6 0 012-1.2z" fill="#9aa3c4"/>
+      <circle cx="12" cy="12" r="3.4" fill="#39405c"/>
+    </symbol>
+    <symbol id="i-shop" viewBox="0 0 24 24">
+      <path d="M4 8h16l-1 12a2 2 0 01-2 1.8H7A2 2 0 015 20z" fill="#ffc93e"/>
+      <path d="M4 8h16l-.35 4H4.35z" fill="#ffdd7e"/>
+      <path d="M8.5 10V6.5a3.5 3.5 0 017 0V10h-2V6.5a1.5 1.5 0 00-3 0V10z" fill="#c8860a"/>
+    </symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24">
+      <rect x="5" y="10" width="14" height="11" rx="2.5" fill="#ffc93e"/>
+      <path d="M8 10V7.6a4 4 0 018 0V10h-2.6V7.6a1.4 1.4 0 00-2.8 0V10z" fill="#9aa3c4"/>
+      <circle cx="12" cy="15" r="1.7" fill="#7a5a08"/>
+    </symbol>
     <symbol id="i-recycle" viewBox="0 0 24 24">
       <path d="M7 9l2.5-4.3c.7-1.1 2.3-1.1 3 0L14 7.2l2-1.2 1 5-5-.4 1.9-1.1-1.4-2.4L10 11zM4.8 12.6l4.4.3-2 1.2 1.4 2.4h3.4l.1 3.5H8.3c-1.3 0-2.5-.7-3.1-1.8l-1.5-2.6-2 1.1zM19.2 12.4l-2.3 4.1 1.5 2.7c.6 1.1-.2 2.6-1.5 2.6l.2-3.4-3.4.1-.1-3.6 3.5.1-1.1-2z" fill="#7fe08f"/>
     </symbol>
@@ -89,23 +103,45 @@
 
 <div id="app">
 
-  <!-- ÉCRAN D'ACCUEIL -->
-  <section id="screen-splash" class="screen">
-    <canvas id="splash-canvas"></canvas>
-    <div class="splash-overlay">
-      <div class="logo">
-        <div class="logo-word">MAKS</div>
-        <div class="logo-sub">MEGA&nbsp;ARENA&nbsp;KOMBAT&nbsp;STARS</div>
+  <!-- ÉCRAN DE CHARGEMENT -->
+  <section id="screen-loading" class="screen">
+    <div class="logo">
+      <div class="logo-word">MAKS</div>
+      <div class="logo-sub">MEGA&nbsp;ARENA&nbsp;KOMBAT&nbsp;STARS</div>
+    </div>
+    <div class="load-box">
+      <div class="load-track"><div id="load-fill"></div></div>
+      <div id="load-tip" class="load-tip">Chargement de l'arène…</div>
+    </div>
+    <div class="version-chip">v1.1</div>
+  </section>
+
+  <!-- HUB : l'écran central du jeu -->
+  <section id="screen-hub" class="screen hidden">
+    <canvas id="hub-canvas"></canvas>
+    <div class="hub-top">
+      <button id="btn-profile" class="chip profile-chip"><img id="profile-avatar" alt=""><span id="profile-name">Toi</span></button>
+      <button id="btn-season" class="chip stage-chip"><svg class="ic"><use href="#i-trophy"/></svg><span id="hub-stage">Ét. 1</span></button>
+      <div class="chip wallet"><svg class="ic"><use href="#i-coin"/></svg><span id="hub-coins">0</span></div>
+      <button id="btn-settings" class="close-round"><svg class="ic"><use href="#i-gear"/></svg></button>
+    </div>
+    <div id="mascot-bubble" class="mascot-bubble hidden"></div>
+    <div class="hub-bottom">
+      <button id="hub-daily" class="daily-banner hidden"></button>
+      <div class="hub-tiles">
+        <button id="hub-garage" class="hub-tile"><svg class="ic"><use href="#i-wrench"/></svg><span>Garage</span></button>
+        <button id="hub-shop" class="hub-tile"><svg class="ic"><use href="#i-shop"/></svg><span>Boutique</span></button>
+        <button id="hub-bet" class="hub-tile"><svg class="ic"><use href="#i-dice"/></svg><span>Paris</span></button>
+        <button id="hub-quick" class="hub-tile"><svg class="ic"><use href="#i-bolt"/></svg><span>Rapide</span></button>
       </div>
-      <button id="btn-play" class="btn xl primary">JOUER</button>
-      <div class="splash-hint">Construis. Combats. Domine l'arène.</div>
+      <button id="hub-fight" class="btn xl primary"><svg class="ic"><use href="#i-trophy"/></svg> <span id="hub-fight-label">COMBATTRE</span> <span id="hub-medals" class="btn-badge">0/8</span></button>
     </div>
   </section>
 
   <!-- ÉCRAN GARAGE -->
   <section id="screen-garage" class="screen hidden">
     <header class="topbar">
-      <div class="brand">MAKS</div>
+      <button id="btn-garage-back" class="close-round"><svg class="ic"><use href="#i-back"/></svg></button>
       <div class="chip stage-chip"><svg class="ic"><use href="#i-trophy"/></svg><span id="stage-label">Étape 1</span></div>
       <div class="chip wallet"><svg class="ic"><use href="#i-coin"/></svg><span id="coins">0</span></div>
     </header>
@@ -243,6 +279,7 @@
         <div id="vs-them-name" class="vs-name"></div>
         <div id="vs-them-stats" class="vs-stats"></div>
       </div>
+      <div id="vs-stake" class="vs-stake"></div>
     </div>
     <div class="vs-buttons">
       <button id="btn-vs-back" class="btn secondary"><svg class="ic"><use href="#i-back"/></svg> Retour</button>
@@ -269,6 +306,11 @@
     </div>
     <div id="battle-msg" class="battle-msg hidden"></div>
     <div id="battle-toast" class="battle-toast hidden"></div>
+    <div id="battle-intro" class="battle-intro hidden">
+      <div id="intro-l" class="intro-name l"></div>
+      <div class="intro-vs">VS</div>
+      <div id="intro-r" class="intro-name r"></div>
+    </div>
   </section>
 
   <!-- ÉCRAN RÉSULTAT -->
@@ -277,7 +319,9 @@
     <canvas id="confetti-canvas"></canvas>
     <div class="result-card">
       <div id="result-title" class="result-title"></div>
+      <img id="result-car" class="result-car hidden" alt="">
       <div id="result-sub" class="result-sub"></div>
+      <div id="result-bits" class="result-bits"></div>
       <div id="result-progress" class="result-progress hidden"></div>
       <div id="result-league" class="result-league hidden"></div>
       <div id="result-rewards" class="result-rewards"><svg class="ic big"><use href="#i-coin"/></svg><span id="reward-coins">0</span></div>
@@ -291,6 +335,66 @@
       <button id="btn-result-ok" class="btn xl primary">Continuer</button>
     </div>
   </section>
+
+  <!-- ÉCRAN BOUTIQUE -->
+  <section id="screen-shop" class="screen hidden">
+    <header class="roster-head">
+      <button id="btn-shop-back" class="close-round"><svg class="ic"><use href="#i-back"/></svg></button>
+      <div>
+        <div class="roster-title">Boutique</div>
+        <div class="roster-sub">Caisses, peintures et co-pilotes !</div>
+      </div>
+      <div class="chip wallet"><svg class="ic"><use href="#i-coin"/></svg><span id="shop-coins">0</span></div>
+    </header>
+    <div id="shop-list" class="shop-list"></div>
+  </section>
+
+  <!-- RÉGLAGES -->
+  <div id="settings-sheet" class="sheet hidden">
+    <div class="sheet-card">
+      <div class="grabber"></div>
+      <div class="sheet-title">Réglages</div>
+      <div class="setting-row"><span>🔊 Sons</span><button id="tgl-sound" class="toggle on" aria-label="Sons"></button></div>
+      <div class="setting-row"><span>📳 Vibrations</span><button id="tgl-haptics" class="toggle on" aria-label="Vibrations"></button></div>
+      <button id="btn-reset" class="btn danger full">Réinitialiser la progression</button>
+      <div class="credits">MAKS v1.1 · Mega Arena Kombat Stars</div>
+      <button id="settings-close" class="btn secondary full">Fermer</button>
+    </div>
+  </div>
+
+  <!-- PROFIL -->
+  <div id="profile-sheet" class="sheet hidden">
+    <div class="sheet-card">
+      <div class="grabber"></div>
+      <div class="sheet-title">Mon profil</div>
+      <div class="profile-head">
+        <img id="profile-img" alt="">
+        <input id="profile-input" maxlength="12" autocomplete="off" spellcheck="false">
+      </div>
+      <div id="profile-stats" class="profile-stats"></div>
+      <button id="profile-close" class="btn secondary full">Fermer</button>
+    </div>
+  </div>
+
+  <!-- CARTE DU CHAMPIONNAT : le parcours des ligues -->
+  <div id="season-sheet" class="sheet hidden">
+    <div class="sheet-card">
+      <div class="grabber"></div>
+      <div class="sheet-title">Le Championnat</div>
+      <div id="season-path" class="season-path"></div>
+      <button id="season-close" class="btn secondary full">Fermer</button>
+    </div>
+  </div>
+
+  <!-- OUVERTURE DE CAISSE -->
+  <div id="crate-sheet" class="sheet hidden">
+    <div class="sheet-card">
+      <div class="grabber"></div>
+      <div class="sheet-title" id="crate-title">Caisse ouverte !</div>
+      <div id="crate-parts" class="crate-parts"></div>
+      <button id="crate-close" class="btn primary full">SUPER !</button>
+    </div>
+  </div>
 
   <!-- Bannière du Grand Combat entre deux combats -->
   <div id="gauntlet-banner" class="gauntlet-banner hidden"></div>

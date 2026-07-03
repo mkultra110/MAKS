@@ -1,12 +1,12 @@
 // Écran garage : aperçu 3D du véhicule, emplacements, inventaire, fiche pièce.
 import * as THREE from 'three';
 import { KIND_LABEL, partDef, partStats, maxLevel, upgradeCost, recycleValue, COPILOTS, PAINTS, LEAGUES, leagueIndex } from './data.js';
-import { state, save, isEquipped, buildLoadout, computeCarStats, loadoutValid, activeSets, equip, unequip, removePart, getPart, MEDALS_TO_ADVANCE } from './state.js';
+import { state, save, isEquipped, buildLoadout, computeCarStats, loadoutValid, activeSets, equip, unequip, removePart, getPart, paintOwned, MEDALS_TO_ADVANCE } from './state.js';
 import { buildCarSpec } from './car.js';
 import { createRenderer, createStudioScene, disposeModel } from './render3d.js';
 import { createCarModel, poseCarStatic } from './models3d.js';
 import { partThumb, copilotThumb } from './thumbs.js';
-import { sfxClick } from './sfx.js';
+import { sfxClick, sfxBuy, sfxDenied } from './sfx.js';
 
 let currentTab = 'body';
 let sheetPart = null;
@@ -48,6 +48,25 @@ function previewLoop(now) {
     pv.camera.updateProjectionMatrix();
   }
   pv.holder.rotation.y = pv.angle + now / 4200;
+  // la vitrine vit : bob de caisse, armes qui tournent, flammes — quantifié 12 fps (« on twos »)
+  if (pv.model) {
+    const t = Math.floor(now / 83) * 83;
+    const m = pv.model;
+    m.bodyGroup.position.y = pv.bodyY + Math.sin(t / 280) * 0.025;
+    m.bodyGroup.rotation.z = Math.sin(t / 280) * 0.01;
+    const tq = t / 1000;
+    for (const anim of m.spins) {
+      // rotation lente (~0.5 tr/s), même consommation que syncCar en combat
+      for (const s of anim.spin) {
+        if (anim.axis === 'x') s.rotation.x = tq * 3.2;
+        else s.rotation.z = -tq * 3.2;
+      }
+    }
+    for (const f of m.flames) {
+      const k = 0.8 + ((t / 83) % 3) * 0.15;
+      f.scale.set(k, 0.9 + ((t / 83) % 2) * 0.2, k);
+    }
+  }
   // cadrage : tient dans le champ vertical ET horizontal
   const fit = pv.fit || 3.4;
   const vFov = pv.camera.fov * Math.PI / 180;
@@ -77,12 +96,16 @@ function refreshPreviewModel(lo) {
   ensurePreview();
   disposeModel(pv.holder); // libère l'ancien modèle avant de le remplacer
   pv.holder.clear();
+  pv.model = null;
   if (!lo.body) return;
   const spec = buildCarSpec(lo);
   const model = createCarModel(spec);
   poseCarStatic(model, 1);
   pv.holder.add(model);
   pv.fit = Math.max(spec.body.w * 0.02 * 1.6, 3.0);
+  // gardé pour l'animation idle de previewLoop
+  pv.model = model.userData;
+  pv.bodyY = model.userData.bodyGroup.position.y; // base posée par poseCarStatic
 }
 
 // ---- interactions ----
@@ -116,8 +139,8 @@ export function initGarage() {
   document.getElementById('btn-upgrade').addEventListener('click', () => {
     if (!sheetPart) return;
     const cost = upgradeCost(sheetPart);
-    if (sheetPart.level >= maxLevel(sheetPart) || state.coins < cost) return;
-    sfxClick();
+    if (sheetPart.level >= maxLevel(sheetPart) || state.coins < cost) { sfxDenied(); return; }
+    sfxBuy(); // achat réussi : son de caisse, pas un simple clic
     state.coins -= cost;
     sheetPart.level++;
     save();
@@ -131,7 +154,7 @@ export function initGarage() {
     sfxClick();
     if (!recycleArmed) {
       recycleArmed = true;
-      btnRec.textContent = 'Confirmer ?';
+      btnRec.textContent = `Confirmer +${recycleValue(sheetPart)} ?`; // garde la valeur sous les yeux
       clearTimeout(recycleTimer);
       recycleTimer = setTimeout(() => {
         recycleArmed = false;
@@ -160,7 +183,7 @@ function openCopilotSheet() {
   list.innerHTML = '';
   const li = leagueIndex(state.stage);
   for (const [id, cp] of Object.entries(COPILOTS)) {
-    const locked = li < cp.unlock;
+    const locked = li < cp.unlock && !state.copilotsBought.includes(id);
     const el = document.createElement('div');
     el.className = 'copilot-card' + (state.copilot === id ? ' selected' : '') + (locked ? ' locked' : '');
     const img = document.createElement('img');
@@ -171,10 +194,17 @@ function openCopilotSheet() {
     nm.className = 'cp-name';
     nm.textContent = cp.name;
     info.appendChild(nm);
-    const desc = document.createElement('div');
-    desc.className = 'cp-desc';
-    desc.textContent = `${cp.passive} · ${cp.active}`;
-    info.appendChild(desc);
+    // passif et pouvoir actif sur deux lignes distinctes, avec micro-labels
+    for (const [label, cls, txt] of [['PASSIF', 'cp-tag-passive', cp.passive], ['ACTIF ⚡', 'cp-tag-active', cp.active]]) {
+      const line = document.createElement('div');
+      line.className = 'cp-desc';
+      const tag = document.createElement('span');
+      tag.className = 'cp-tag ' + cls;
+      tag.textContent = label;
+      line.appendChild(tag);
+      line.appendChild(document.createTextNode(' ' + txt));
+      info.appendChild(line);
+    }
     el.appendChild(info);
     if (locked) {
       const lock = document.createElement('div');
@@ -325,9 +355,13 @@ function renderInventory() {
     return;
   }
   parts.sort((a, b) => (b.stars - a.stars) || (b.level - a.level));
+  // pièce équipée de référence pour la comparaison rapide sur carte
+  const lo = buildLoadout();
+  const eqByKind = { body: lo.body, wheel: lo.wheels[0], weapon: lo.weapons[0], gadget: lo.gadgets[0] };
   for (const p of parts) {
     const el = document.createElement('div');
-    el.className = 'inv-item' + (isEquipped(p.id) ? ' equipped' : '');
+    // la classe stars-N rend le tri par rareté visible (fond teinté en CSS)
+    el.className = `inv-item stars-${p.stars}` + (isEquipped(p.id) ? ' equipped' : '');
     const img = document.createElement('img');
     img.src = partThumb(p);
     el.appendChild(img);
@@ -341,8 +375,26 @@ function renderInventory() {
     el.appendChild(st);
     const lv = document.createElement('div');
     lv.className = 'lv';
-    lv.textContent = 'n.' + p.level;
+    lv.textContent = 'Nv ' + p.level;
     el.appendChild(lv);
+    // stat clé sur la carte, chevron vert si elle dépasse la pièce équipée
+    const [sk, sv] = partStats(p)[0];
+    const ms = document.createElement('div');
+    ms.className = 'ms';
+    ms.style.fontSize = '11px';
+    ms.textContent = `${sk} ${sv}`;
+    const eq = eqByKind[p.kind];
+    if (eq && eq.id !== p.id) {
+      const a = parseFloat(sv), b = parseFloat(partStats(eq)[0][1]);
+      if (Number.isFinite(a) && Number.isFinite(b) && a > b) {
+        const up = document.createElement('span');
+        up.className = 'up';
+        up.style.color = 'var(--go)';
+        up.textContent = ' ▲';
+        ms.appendChild(up);
+      }
+    }
+    el.appendChild(ms);
     el.addEventListener('click', () => { sfxClick(); openSheet(p); });
     inv.appendChild(el);
   }
@@ -357,26 +409,40 @@ function openSheet(part) {
   document.getElementById('part-level').textContent = `${KIND_LABEL[part.kind]} · Niveau ${part.level}/${maxLevel(part)}`;
   const list = document.getElementById('part-statlist');
   list.innerHTML = '';
-  for (const [k, v] of partStats(part)) {
+  // aperçu du prochain niveau : objet jetable, aucune mutation de la pièce
+  const nextStats = part.level < maxLevel(part) ? partStats({ ...part, level: part.level + 1 }) : null;
+  partStats(part).forEach(([k, v], i) => {
     const el = document.createElement('div');
     el.className = 'ps';
     const small = document.createElement('small');
     small.textContent = k;
     el.appendChild(small);
     el.appendChild(document.createTextNode(String(v)));
+    if (nextStats && String(nextStats[i][1]) !== String(v)) {
+      el.appendChild(document.createTextNode(' → '));
+      const nx = document.createElement('span');
+      nx.className = 'ps-next';
+      nx.style.color = 'var(--go)';
+      nx.style.fontWeight = '800';
+      nx.textContent = String(nextStats[i][1]);
+      el.appendChild(nx);
+    }
     list.appendChild(el);
-  }
+  });
   // peinture (corps uniquement)
   const paintRow = document.getElementById('paint-row');
   paintRow.innerHTML = '';
   if (part.kind === 'body') {
     paintRow.classList.remove('hidden');
     for (const color of PAINTS) {
+      const owned = paintOwned(color, PAINTS);
       const sw = document.createElement('button');
-      sw.className = 'paint-swatch' + ((part.paint || '') === color ? ' selected' : '');
+      sw.className = 'paint-swatch' + ((part.paint || '') === color ? ' selected' : '') + (owned ? '' : ' locked');
       sw.style.background = `linear-gradient(180deg, ${color}, ${color}cc)`;
+      if (!owned) sw.innerHTML = '<svg class="ic"><use href="#i-lock"/></svg>';
       sw.addEventListener('click', () => {
         sfxClick();
+        if (!owned) { garageToast('Débloque cette peinture à la Boutique !'); return; }
         part.paint = part.paint === color ? undefined : color;
         save();
         openSheet(part);
@@ -394,6 +460,9 @@ function openSheet(part) {
   btnEquip.disabled = equipped && part.kind === 'body';
 
   const btnUp = document.getElementById('btn-upgrade');
+  // hiérarchie : l'action primaire domine (équiper si pas équipée, sinon améliorer)
+  btnEquip.className = equipped ? 'btn outline' : 'btn primary';
+  btnUp.className = equipped ? 'btn gold' : 'btn outline';
   if (part.level >= maxLevel(part)) {
     btnUp.textContent = 'Niveau MAX';
     btnUp.disabled = true;

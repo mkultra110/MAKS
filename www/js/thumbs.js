@@ -85,13 +85,33 @@ export function partThumb(part) {
   return url;
 }
 
-// Portrait d'un véhicule complet (cartes VS).
+// Portrait d'un véhicule complet (cartes VS, roster).
+// Cache LRU dédié : types/étoiles/niveau/peinture suffisent (le visuel ne dépend de rien d'autre),
+// borné à 16 entrées car chaque snapshot est un gros dataURL.
+const CAR_CACHE_MAX = 16;
+const carCache = new Map();
+const carPartKey = p => p ? `${p.type}.${p.stars || 0}.${p.level || 0}` : '';
+
 export function carSnapshot(loadout, { dir = 1, w = 560, h = 320 } = {}) {
+  const key = `car:${carPartKey(loadout.body)}:${loadout.body?.paint || ''}` +
+    `:${(loadout.wheels || []).map(carPartKey).join(',')}` +
+    `:${(loadout.weapons || []).map(carPartKey).join(',')}` +
+    `:${(loadout.gadgets || []).map(carPartKey).join(',')}:${dir}:${w}x${h}`;
+  if (carCache.has(key)) {
+    // LRU : remonte l'entrée en tête de file
+    const url = carCache.get(key);
+    carCache.delete(key);
+    carCache.set(key, url);
+    return url;
+  }
   const spec = buildCarSpec(loadout);
   const model = createCarModel(spec);
   poseCarStatic(model, 1);
   if (model.userData.blob) model.userData.blob.visible = false; // trop boueux en vignette
   const fit = Math.max(spec.body.w * 0.02 * 1.55, 2.2);
   model.rotation.y = dir === 1 ? -0.55 : Math.PI + 0.55;
-  return snapshot(model, fit, { w, h, podiumY: 0, lookY: fit * 0.16 });
+  const url = snapshot(model, fit, { w, h, podiumY: 0, lookY: fit * 0.16 });
+  if (carCache.size >= CAR_CACHE_MAX) carCache.delete(carCache.keys().next().value); // évince le plus ancien
+  carCache.set(key, url);
+  return url;
 }

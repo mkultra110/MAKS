@@ -97,16 +97,188 @@ body {
   box-shadow: 0 3px 0 var(--ink);
 }
 
-/* ---------- accueil ---------- */
-#screen-splash { align-items: center; justify-content: center; }
-#splash-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-.splash-overlay {
-  position: relative; height: 100%; width: 100%;
-  display: flex; flex-direction: column; align-items: center;
-  padding: calc(10vh + var(--sat)) 24px calc(48px + var(--sab));
+/* ---------- écran de chargement ---------- */
+#screen-loading {
+  align-items: center; justify-content: center; gap: 28px;
+  padding: 24px;
+}
+.load-box { width: min(78vw, 340px); text-align: center; }
+.load-track {
+  height: 22px; background: var(--paper);
+  border: 3px solid var(--ink); border-radius: 999px; overflow: hidden;
+  box-shadow: 0 4px 0 var(--ink);
+}
+#load-fill {
+  height: 100%; width: 0%;
+  background: var(--sun);
+  background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.35) 0 8px, transparent 8px 16px);
+}
+.load-tip {
+  margin-top: 14px; font-size: 13.5px; font-weight: 800; color: var(--ink);
+  background: var(--paper); border: 3px solid var(--ink); border-radius: 999px;
+  padding: 6px 14px; display: inline-block; transform: rotate(-1deg);
+  box-shadow: 0 3px 0 var(--ink);
+}
+.version-chip {
+  position: absolute; bottom: calc(14px + var(--sab));
+  font-size: 11px; font-weight: 800; color: var(--ink); opacity: .5;
+}
+
+/* ---------- hub : la place du village ---------- */
+#screen-hub { justify-content: space-between; }
+#hub-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.hub-top {
+  position: relative; display: flex; align-items: center; gap: 8px;
+  padding: calc(10px + var(--sat)) 14px 8px;
+}
+.profile-chip {
+  cursor: pointer; font-family: inherit; padding: 3px 12px 3px 4px;
+  margin-right: auto;
+  transition: transform .07s steps(2);
+}
+.profile-chip:active { transform: translateY(2px); }
+.profile-chip img {
+  width: 30px; height: 30px; border-radius: 50%; object-fit: cover;
+  border: 2px solid var(--ink); background: var(--sky);
+}
+.hub-top .close-round { position: relative; }
+.hub-bottom {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 0 14px calc(18px + var(--sab));
+}
+.hub-tiles { display: flex; gap: 10px; width: 100%; }
+.hub-tile {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 10px 4px 8px; font-family: inherit; font-size: 12.5px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .3px; color: var(--ink); cursor: pointer;
+  background: var(--paper); border: 3px solid var(--ink); border-radius: var(--wob-a);
+  box-shadow: 0 4px 0 var(--ink);
+  transition: transform .07s steps(2), box-shadow .07s steps(2);
+}
+.hub-tile:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+.hub-tile:disabled { opacity: .45; pointer-events: none; }
+.hub-tile .ic { width: 1.7em; height: 1.7em; }
+.hub-tile:nth-child(2) { transform: rotate(-1deg); }
+.hub-tile:nth-child(3) { transform: rotate(1deg); }
+.hub-tile:nth-child(2):active, .hub-tile:nth-child(3):active { transform: translateY(3px); }
+#hub-fight { width: 100%; }
+.btn-badge {
+  display: inline-block; margin-left: 8px; padding: 1px 10px;
+  font-size: 13px; background: var(--paper);
+  border: 2.5px solid var(--ink); border-radius: 999px;
+}
+.mascot-bubble {
+  position: absolute; z-index: 5; transform: translate(-50%, -100%);
+  max-width: 220px; padding: 8px 14px; text-align: center;
+  font-size: 14px; font-weight: 800; color: var(--ink);
+  background: var(--paper); border: 3px solid var(--ink);
+  border-radius: var(--wob-b);
+  box-shadow: 0 4px 0 var(--ink);
+  animation: msg-pop .25s steps(3);
   pointer-events: none;
 }
-.splash-overlay .btn { pointer-events: auto; margin-top: auto; }
+
+/* ---------- boutique ---------- */
+#screen-shop { overflow: hidden; }
+.shop-list {
+  flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 4px 14px calc(24px + var(--sab));
+  display: flex; flex-direction: column; gap: 10px;
+}
+.shop-section {
+  margin-top: 10px; font-size: 15px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .6px; color: var(--ink); transform: rotate(-.6deg);
+}
+.shop-card {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--paper); border: 3px solid var(--ink); border-radius: var(--wob-a);
+  box-shadow: 0 4px 0 var(--ink);
+  padding: 10px 12px;
+}
+.shop-card:nth-child(odd) { transform: rotate(.5deg); }
+.shop-card:nth-child(even) { transform: rotate(-.5deg); }
+.shop-card img { width: 74px; height: 52px; object-fit: contain; flex: none; }
+.shop-card.copilot img { width: 54px; height: 54px; border-radius: 50%; border: 2.5px solid var(--ink); background: var(--sky); object-fit: cover; }
+.crate-emoji { font-size: 40px; width: 74px; text-align: center; flex: none; }
+.shop-info { flex: 1; min-width: 0; }
+.shop-name { font-size: 16px; font-weight: 800; }
+.shop-desc { font-size: 12px; font-weight: 700; color: var(--muted); }
+.price-btn { flex: none; font-size: 14px; padding: 9px 14px; white-space: nowrap; }
+.shop-card.offer { background: var(--sun); }
+.shop-card.offer .shop-desc { color: var(--ink); }
+.shop-card.offer.sold { background: var(--paper); opacity: .8; }
+.paint-shop { display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 2px; }
+.paint-swatch.big {
+  width: 54px; height: 54px; font-size: 20px; font-weight: 800; color: #fff;
+  text-shadow: 0 2px 0 var(--ink);
+  position: relative;
+}
+.paint-swatch.big .paint-price {
+  position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%);
+  font-size: 11px; padding: 0 7px; color: var(--ink);
+  background: var(--sun); border: 2px solid var(--ink); border-radius: 999px;
+}
+.paint-swatch.big:disabled { opacity: .5; }
+
+/* ---------- réglages & profil ---------- */
+.setting-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 4px; font-size: 16px; font-weight: 800; color: var(--ink);
+}
+.toggle {
+  width: 60px; height: 32px; position: relative; cursor: pointer;
+  background: var(--paper); border: 3px solid var(--ink); border-radius: 999px;
+  box-shadow: 0 3px 0 var(--ink);
+  transition: background .12s steps(2);
+}
+.toggle::after {
+  content: ''; position: absolute; top: 2px; left: 3px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--paper); border: 3px solid var(--ink);
+  transition: left .12s steps(3);
+}
+.toggle.on { background: var(--go); }
+.toggle.on::after { left: 27px; }
+.credits { margin: 12px 0; text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); }
+#settings-sheet .btn.danger { margin-top: 8px; }
+#settings-sheet .btn + .btn { margin-top: 10px; }
+.profile-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.profile-head img {
+  width: 64px; height: 64px; border-radius: 50%; object-fit: cover;
+  border: 3px solid var(--ink); background: var(--sky);
+  box-shadow: 0 3px 0 var(--ink);
+}
+#profile-input {
+  flex: 1; min-width: 0; font-family: inherit; font-size: 20px; font-weight: 800;
+  color: var(--ink); background: var(--paper);
+  border: 3px solid var(--ink); border-radius: 14px; padding: 8px 12px;
+  box-shadow: inset 0 3px 0 rgba(38, 24, 58, .12);
+  user-select: text; -webkit-user-select: text;
+}
+.profile-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.pstat {
+  background: var(--paper); border: 3px solid var(--ink); border-radius: 14px;
+  padding: 7px 10px; font-size: 17px; font-weight: 800; color: var(--ink);
+  box-shadow: 0 3px 0 var(--ink);
+}
+.pstat small { display: block; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+
+/* ---------- ouverture de caisse ---------- */
+.crate-parts { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.crate-part {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--paper); border: 3px solid var(--ink); border-radius: var(--wob-b);
+  box-shadow: 0 4px 0 var(--ink);
+  padding: 8px 12px;
+  animation: crate-pop .4s steps(4) both;
+}
+.crate-part img { width: 80px; height: 56px; object-fit: contain; }
+.crate-part-name { font-size: 15px; font-weight: 800; color: var(--ink); }
+@keyframes crate-pop {
+  from { transform: scale(.2) rotate(-8deg); opacity: 0; }
+  60% { transform: scale(1.12) rotate(2deg); }
+}
+
 .logo { text-align: center; animation: logo-in .5s steps(5) both; }
 .logo-word {
   font-size: clamp(72px, 24vw, 104px); font-weight: 800; line-height: .95; font-style: italic;
@@ -326,6 +498,8 @@ body {
   box-shadow: 0 3px 0 var(--ink);
 }
 .paint-swatch.selected { transform: scale(1.15) rotate(-6deg); }
+.paint-swatch.locked { opacity: .55; color: var(--ink); }
+.paint-swatch.locked .ic { width: 16px; height: 16px; }
 
 /* ---------- co-pilotes ---------- */
 .copilot-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; max-height: 52vh; overflow-y: auto; }
@@ -378,7 +552,27 @@ body {
   box-shadow: 0 4px 0 var(--ink);
 }
 .roster-card:active { transform: scale(.96); }
-.roster-card img { width: 44px; height: 44px; border-radius: 12px; background: var(--sky); border: 2px solid var(--ink); flex-shrink: 0; }
+.roster-card img { width: 62px; height: 46px; object-fit: cover; border-radius: 12px; background: var(--sky); border: 2px solid var(--ink); flex-shrink: 0; }
+.roster-card { animation: roster-in .3s steps(4) backwards; }
+@keyframes roster-in { from { transform: translateY(18px) scale(.9); opacity: 0; } }
+.rc-diff {
+  position: absolute; top: -9px; right: 8px;
+  font-size: 9px; font-weight: 800; letter-spacing: .08em; color: #fff;
+  border: 2px solid var(--ink); border-radius: 999px; padding: 1px 7px;
+  transform: rotate(-5deg);
+  box-shadow: 0 2px 0 var(--ink);
+}
+.rc-diff.easy { background: var(--go); }
+.rc-diff.hard { background: var(--pow); }
+.rc-diff.boss { background: var(--sun); color: var(--ink); }
+.roster-card.next { border-color: var(--sun); box-shadow: 0 4px 0 var(--ink), 0 0 0 3px var(--sun); }
+.rc-next {
+  position: absolute; right: 6px; bottom: 5px;
+  font-size: 9px; font-weight: 800; letter-spacing: .08em; color: var(--ink);
+  background: var(--sun); border: 2px solid var(--ink); border-radius: 6px; padding: 0 6px;
+  transform: rotate(-4deg);
+  animation: attention 1.2s steps(2) infinite;
+}
 .roster-card .rc-name { font-weight: 800; font-size: 12.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .roster-card .rc-stats { font-size: 10.5px; color: var(--muted); font-weight: 700; }
 .roster-card .rc-medal { position: absolute; top: -8px; right: -6px; width: 24px; height: 24px; }
@@ -455,8 +649,9 @@ body {
   box-shadow: 0 6px 0 var(--ink);
 }
 .vs-card img { display: block; width: 100%; height: auto; border-radius: 14px; }
-.vs-card.mine { transform: rotate(-1.2deg); animation: card-l .4s steps(5); }
-.vs-card.theirs { transform: rotate(1.2deg); border-radius: var(--wob-b); animation: card-r .4s steps(5); }
+.vs-card.mine { transform: rotate(-1.2deg); animation: card-l .4s steps(5) both, card-idle 1.1s 1s steps(2) infinite alternate; }
+.vs-card.theirs { transform: rotate(1.2deg); border-radius: var(--wob-b); border-color: var(--pow); animation: card-r .4s .22s steps(5) both, card-idle 1.1s 1.2s steps(2) infinite alternate; }
+@keyframes card-idle { to { transform: rotate(-.4deg) translateY(-2px); } }
 @keyframes card-l { from { transform: translateX(-70vw) rotate(-1.2deg); } }
 @keyframes card-r { from { transform: translateX(70vw) rotate(1.2deg); } }
 .vs-name { text-align: center; font-weight: 800; padding-top: 6px; font-size: 17px; color: var(--ink); }
@@ -467,10 +662,10 @@ body {
   text-shadow:
     -3px -3px 0 var(--ink), 3px -3px 0 var(--ink), -3px 3px 0 var(--ink), 3px 3px 0 var(--ink),
     0 6px 0 var(--ink);
-  animation: vs-pop .4s steps(5);
+  animation: vs-pop .35s .45s steps(4) backwards;
   transform: rotate(-4deg);
 }
-@keyframes vs-pop { from { transform: scale(0); } }
+@keyframes vs-pop { from { transform: scale(0); } 70% { transform: scale(1.5) rotate(-8deg); } }
 .vs-buttons { display: flex; gap: 12px; justify-content: center; margin-top: 30px; }
 
 /* ---------- combat ---------- */
@@ -584,7 +779,17 @@ body {
   box-shadow: 0 5px 0 var(--ink);
   transform: rotate(1deg);
 }
-.reward-part-glow { display: none; }
+/* halo tournant derrière la pièce gagnée */
+.reward-part-glow {
+  position: absolute; inset: 0; overflow: hidden;
+  border-radius: var(--wob-a); pointer-events: none;
+}
+.reward-part-glow::before {
+  content: ''; position: absolute; inset: -40%;
+  background: repeating-conic-gradient(var(--sun) 0 12deg, transparent 12deg 24deg);
+  opacity: .35;
+  animation: sunspin 14s linear infinite;
+}
 .reward-tag {
   position: absolute; top: -12px; left: 50%; transform: translateX(-50%) rotate(-2deg);
   background: var(--pow); color: #fff; border: 3px solid var(--ink);
@@ -596,3 +801,119 @@ body {
 #reward-name { font-weight: 800; font-size: 15px; color: var(--ink); }
 #btn-next { display: block; margin: 0 auto 12px; min-width: 220px; }
 #btn-result-ok { min-width: 220px; }
+
+/* ---------- VS dramatisé : fond coupé en deux camps ---------- */
+#screen-vs {
+  background:
+    linear-gradient(115deg, transparent 0 46.5%, var(--ink) 46.5% 53.5%, transparent 53.5%),
+    linear-gradient(115deg, var(--sky) 0 50%, #FF7A87 50%);
+}
+.vs-stake {
+  margin-top: 14px; padding: 7px 16px; text-align: center;
+  font-size: 13px; font-weight: 800; color: var(--ink);
+  background: var(--paper); border: 3px solid var(--ink); border-radius: 999px;
+  transform: rotate(-1deg);
+  box-shadow: 0 3px 0 var(--ink);
+  animation: msg-pop .3s .6s steps(3) backwards;
+}
+.vs-stats .up { color: var(--go); font-weight: 800; }
+.vs-stats .down { color: var(--pow); font-weight: 800; }
+
+/* ---------- résultat en cascade ---------- */
+.result-car {
+  display: block; margin: -6px auto 2px; width: 210px; height: 118px; object-fit: contain;
+  animation: msg-pop .35s steps(4);
+}
+.result-bits { display: flex; flex-direction: column; gap: 7px; margin-bottom: 10px; }
+.result-bit {
+  background: var(--paper); border: 3px solid var(--ink); border-radius: 999px;
+  padding: 6px 16px; font-size: 13.5px; font-weight: 800; color: var(--ink);
+  box-shadow: 0 3px 0 var(--ink);
+  animation: msg-pop .3s steps(3);
+}
+.result-bit:nth-child(odd) { transform: rotate(-1.2deg); }
+.result-bit:nth-child(even) { transform: rotate(1.2deg); }
+
+/* ---------- paris : impasse & boutons parlants ---------- */
+.bet-broke {
+  width: 100%; text-align: center; font-size: 14px; font-weight: 800; color: var(--ink);
+  background: var(--paper); border: 3px solid var(--ink); border-radius: var(--wob-a);
+  padding: 10px 14px; margin-bottom: 10px;
+  box-shadow: 0 3px 0 var(--ink);
+}
+.bet-buttons .btn small { display: block; font-size: 11px; font-weight: 800; opacity: .75; text-transform: none; }
+
+/* ---------- rareté des pièces dans l'inventaire ---------- */
+.inv-item.stars-2 { background: #E4F7EB; }
+.inv-item.stars-3 { background: #E0EFFF; }
+.inv-item.stars-4 { background: #EFE4FF; }
+.inv-item.stars-5 { background: linear-gradient(160deg, #FFF3C4, #FFD980); }
+.inv-item .stat-hint { font-size: 10px; font-weight: 800; color: var(--muted); }
+.inv-item .stat-hint .up { color: var(--go); }
+
+/* ---------- carte du championnat ---------- */
+.season-path { display: flex; flex-direction: column; gap: 0; margin-bottom: 14px; max-height: 56vh; overflow-y: auto; }
+.season-league {
+  position: relative; padding: 10px 12px 10px 40px;
+}
+.season-league::before {
+  content: ''; position: absolute; left: 18px; top: 0; bottom: 0; width: 4px;
+  background: var(--ink); opacity: .25;
+}
+.season-league:first-child::before { top: 14px; }
+.season-league:last-child::before { bottom: auto; height: 14px; }
+.sl-dot {
+  position: absolute; left: 9px; top: 12px; width: 16px; height: 16px;
+  border-radius: 50%; border: 3px solid var(--ink); background: var(--lg, var(--paper));
+  box-shadow: 0 2px 0 var(--ink);
+}
+.season-league.locked .sl-dot { background: var(--paper); opacity: .6; }
+.sl-head { display: flex; align-items: baseline; gap: 8px; }
+.sl-name { font-weight: 800; font-size: 16px; color: var(--ink); }
+.season-league.locked .sl-name, .season-league.locked .sl-sub { opacity: .5; }
+.sl-range { margin-left: auto; font-size: 11px; font-weight: 800; color: var(--muted); }
+.sl-sub { font-size: 12px; font-weight: 700; color: var(--muted); }
+.season-league.done .sl-sub { color: var(--go); }
+.season-league.current {
+  background: var(--paper); border: 3px solid var(--ink); border-radius: var(--wob-a);
+  box-shadow: 0 4px 0 var(--ink); margin: 4px 0;
+}
+.season-league.current .sl-dot { animation: attention 1.2s steps(2) infinite; }
+.sl-bar {
+  height: 10px; margin-top: 6px; background: #fff;
+  border: 2.5px solid var(--ink); border-radius: 999px; overflow: hidden;
+}
+.sl-bar div {
+  height: 100%; background: var(--sun);
+  background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.35) 0 6px, transparent 6px 12px);
+}
+.season-league.prestige .sl-dot { background: var(--sun); }
+
+/* ---------- affiche de duel au lancement du combat ---------- */
+.battle-intro {
+  position: absolute; inset: 0; z-index: 6; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+}
+.intro-name {
+  max-width: 82%; padding: 10px 26px;
+  font-size: 26px; font-weight: 800; font-style: italic; color: var(--ink);
+  background: var(--paper); border: 3.5px solid var(--ink);
+  box-shadow: 0 6px 0 var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.intro-name.l {
+  border-radius: var(--wob-a); transform: rotate(-2deg);
+  animation: intro-l .4s steps(5) both, intro-out .3s 1.7s steps(3) forwards;
+}
+.intro-name.r {
+  border-radius: var(--wob-b); transform: rotate(2deg); background: var(--pow); color: #fff;
+  animation: intro-r .4s .18s steps(5) both, intro-out .3s 1.7s steps(3) forwards;
+}
+.intro-vs {
+  font-size: 44px; font-weight: 800; font-style: italic; color: var(--sun);
+  text-shadow: -3px -3px 0 var(--ink), 3px -3px 0 var(--ink), -3px 3px 0 var(--ink), 3px 3px 0 var(--ink), 0 5px 0 var(--ink);
+  animation: vs-pop .3s .4s steps(4) backwards, intro-out .3s 1.7s steps(3) forwards;
+}
+@keyframes intro-l { from { transform: translateX(-90vw) rotate(-2deg); } }
+@keyframes intro-r { from { transform: translateX(90vw) rotate(2deg); } }
+@keyframes intro-out { to { transform: scale(1.6); opacity: 0; } }

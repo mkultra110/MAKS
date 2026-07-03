@@ -15,13 +15,26 @@ export const state = {
   stage: 1,
   medals: [],              // indices des adversaires battus à l'étape courante
   totalWins: 0,
+  bestStage: 1,            // meilleure étape atteinte (profil)
   lastLeague: 0,           // indice de la dernière ligue célébrée
   prestige: 0,             // nombre de prestiges (bonus permanent +4%/prestige)
   dailyDone: '',           // date (AAAA-MM-JJ) du dernier Défi du jour réussi
+  shopDaily: '',           // date d'achat de l'offre du jour
   copilot: 'ronron',
+  playerName: 'Toi',
+  settings: { sound: true, haptics: true },
+  paints: [],              // peintures débloquées en boutique (les 3 premières sont offertes)
+  copilotsBought: [],      // co-pilotes débloqués en avance à la boutique
   inventory: [],           // liste de pièces
   equipped: { body: null, wheels: [null, null], weapons: [], gadgets: [] }, // ids
 };
+
+// Les 3 premières peintures du nuancier sont offertes, le reste s'achète.
+export const FREE_PAINTS = 3;
+export function paintOwned(color, paintsList) {
+  const idx = paintsList.indexOf(color);
+  return idx > -1 && (idx < FREE_PAINTS || state.paints.includes(color));
+}
 
 // Bonus permanent de prestige appliqué à la machine du joueur.
 export function prestigeBoost() {
@@ -42,6 +55,14 @@ export function load() {
       // normalisation défensive : une sauvegarde corrompue ne doit jamais bloquer le boot
       if (state.copilot === undefined) state.copilot = 'ronron';
       if (state.lastLeague === undefined) state.lastLeague = leagueIndex(state.stage);
+      if (typeof state.playerName !== 'string' || !state.playerName.trim()) state.playerName = 'Toi';
+      state.playerName = state.playerName.slice(0, 12);
+      if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+      state.settings = { sound: state.settings.sound !== false, haptics: state.settings.haptics !== false };
+      if (!Array.isArray(state.paints)) state.paints = [];
+      if (!Array.isArray(state.copilotsBought)) state.copilotsBought = [];
+      if (typeof state.shopDaily !== 'string') state.shopDaily = '';
+      if (!Number.isFinite(state.bestStage) || state.bestStage < state.stage) state.bestStage = state.stage;
       if (!Array.isArray(state.medals)) state.medals = [];
       if (!Number.isFinite(state.prestige)) state.prestige = 0;
       if (typeof state.dailyDone !== 'string') state.dailyDone = '';
@@ -99,6 +120,7 @@ export function buildLoadout() {
     wheels: e.wheels.map(getPart).filter(Boolean),
     weapons: e.weapons.map(getPart).filter(Boolean),
     gadgets: e.gadgets.map(getPart).filter(Boolean),
+    copilot: state.copilot,
   };
 }
 
@@ -118,6 +140,7 @@ export function computeCarStats(lo) {
     const d = partDef(g);
     used += d.energy;
     if (d.hpBoost) hp *= 1 + d.hpBoost;
+    if (d.dmgBoost) atk *= 1 + d.dmgBoost; // Surtension : reflétée dans l'ATQ affichée
     if (d.heal) heal += d.heal;
     if (g.type === 'booster') hasBooster = true;
     if (g.type === 'backpedal') hasBackpedal = true;
@@ -312,6 +335,7 @@ export function winRewards(quick, opponentIdx = null) {
       state.stage++;
       state.medals = [];
       promoted = true;
+      if (state.stage > state.bestStage) state.bestStage = state.stage;
       coins += 50 + stage * 15; // prime de promotion
       // fin du championnat : PRESTIGE — retour à l'étape 1, bonus permanent
       if (state.stage > FINAL_STAGE) {

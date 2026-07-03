@@ -189,3 +189,112 @@ export function fitCameraToBox(camera, size, dist = null) {
   camera.lookAt(0, size * 0.22, 0);
   return d;
 }
+
+// ---------- décor du hub : stade au loin, panneau MAKS, arbres ----------
+// Un vrai lieu au lieu d'un podium flottant dans le vide.
+function canvasTexture(w, h, draw) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  draw(c.getContext('2d'));
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+export function addHubDecor(scene) {
+  const toon = color => new THREE.MeshToonMaterial({ color, gradientMap: toonGradient() });
+
+  // tribunes : un long mur courbe rayé de couleurs, cerclé d'encre
+  const standTex = canvasTexture(1024, 128, x => {
+    x.fillStyle = '#FFF6E0'; x.fillRect(0, 0, 1024, 128);
+    const cols = ['#FF4D5E', '#FFB800', '#2FD573', '#49C4F0', '#FF5C9E'];
+    for (let i = 0; i < 64; i++) {
+      x.fillStyle = cols[i % cols.length];
+      x.fillRect(i * 16, 34, 12, 60);
+    }
+    x.fillStyle = '#26183A'; x.fillRect(0, 0, 1024, 12); x.fillRect(0, 116, 1024, 12);
+  });
+  standTex.wrapS = THREE.RepeatWrapping;
+  standTex.repeat.set(3, 1);
+  const stand = new THREE.Mesh(
+    new THREE.CylinderGeometry(26, 26, 5.2, 48, 1, true, Math.PI * 0.62, Math.PI * 0.76),
+    new THREE.MeshBasicMaterial({ map: standTex, side: THREE.BackSide, fog: false })
+  );
+  stand.position.y = 2.2;
+  scene.add(stand);
+  // fanions au-dessus des tribunes
+  const flagGeo = new THREE.ConeGeometry(0.34, 0.9, 4);
+  const flagCols = [0xff4d5e, 0xffb800, 0x2fd573, 0xff5c9e];
+  for (let i = 0; i < 7; i++) {
+    const a = Math.PI * (0.72 + i * 0.093);
+    const flag = new THREE.Mesh(flagGeo, toon(flagCols[i % flagCols.length]));
+    flag.position.set(Math.cos(a) * 25.5, 5.4, Math.sin(a) * 25.5);
+    flag.rotation.z = Math.PI; // pointe vers le bas
+    scene.add(flag);
+  }
+
+  // panneau « MAKS ARENA » sur deux poteaux
+  const board = new THREE.Group();
+  const face = new THREE.Mesh(
+    new THREE.BoxGeometry(6.4, 2.5, 0.18),
+    new THREE.MeshBasicMaterial({
+      map: canvasTexture(512, 200, x => {
+        x.fillStyle = '#FFF6E0'; x.fillRect(0, 0, 512, 200);
+        x.strokeStyle = '#26183A'; x.lineWidth = 18; x.strokeRect(9, 9, 494, 182);
+        x.font = '800 92px "Baloo 2", sans-serif';
+        x.textAlign = 'center'; x.textBaseline = 'middle';
+        x.save(); x.translate(256, 86); x.rotate(-0.03);
+        x.fillStyle = '#FFB800';
+        x.strokeStyle = '#26183A'; x.lineWidth = 10;
+        x.strokeText('MAKS', 0, 0); x.fillText('MAKS', 0, 0);
+        x.restore();
+        x.fillStyle = '#26183A'; x.font = '800 34px "Baloo 2", sans-serif';
+        x.fillText('A  R  E  N  A', 256, 158);
+      }),
+    })
+  );
+  face.position.y = 3.4;
+  board.add(face);
+  const postGeo = new THREE.CylinderGeometry(0.14, 0.14, 3.4, 8);
+  for (const sx of [-1, 1]) {
+    const post = new THREE.Mesh(postGeo, toon(0x26183a));
+    post.position.set(sx * 2.6, 1.4, 0);
+    board.add(post);
+  }
+  board.position.set(-8.5, -0.44, -9);
+  board.rotation.y = 0.5;
+  scene.add(board);
+
+  // arbres boules : tronc brun + feuillage à deux verts + ombre blob
+  const trunkGeo = new THREE.CylinderGeometry(0.16, 0.22, 1.1, 8);
+  const leafGeo = new THREE.SphereGeometry(1.05, 12, 10);
+  const leafMat = toon(0x2fae5f), leafMat2 = toon(0x3fcf74);
+  const trunkMat = toon(0x7a4a2a);
+  const spots = [[7.5, -6.5, 1.1], [10.5, -3.4, 1.35], [-11.5, -4, 1.2], [6.8, -11, 1.5], [-6.5, -12.5, 1.3]];
+  spots.forEach(([tx, tz, s], i) => {
+    const tree = new THREE.Group();
+    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+    trunk.position.y = 0.5;
+    tree.add(trunk);
+    const leaf = new THREE.Mesh(leafGeo, i % 2 ? leafMat : leafMat2);
+    leaf.position.y = 1.6;
+    leaf.scale.y = 0.9;
+    tree.add(leaf);
+    const shadow = makeBlobShadow(0.8);
+    shadow.position.y = 0.02;
+    tree.add(shadow);
+    tree.scale.setScalar(s);
+    tree.position.set(tx, -0.44, tz);
+    scene.add(tree);
+  });
+
+  // pneus décoratifs empilés près du podium (clin d'œil garage)
+  const tireGeo = new THREE.TorusGeometry(0.42, 0.2, 10, 20);
+  const tireMat = new THREE.MeshToonMaterial({ color: 0x2e2a44, gradientMap: toonGradient() });
+  for (let i = 0; i < 3; i++) {
+    const tire = new THREE.Mesh(tireGeo, tireMat);
+    tire.rotation.x = Math.PI / 2;
+    tire.position.set(4.6 + (i % 2) * 0.12, -0.44 + 0.2 + i * 0.38, 2.6);
+    scene.add(tire);
+  }
+}

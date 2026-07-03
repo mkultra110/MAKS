@@ -25,6 +25,9 @@ export const WEAPONS = {
   rocket: { name: 'Roquettes',   kind: 'rocket', energy: 3, dmg: 36, cooldown: 2.3, w: 44, h: 18 },
   laser:  { name: 'Laser',       kind: 'laser',  energy: 4, dmg: 26, cooldown: 1.35, range: 560, w: 36, h: 18 },
   minigun:{ name: 'Mitrailleuse',kind: 'gun',    energy: 3, dmg: 4.5, cooldown: 0.28, range: 520, w: 42, h: 16 },
+  hammer: { name: 'Masse',       kind: 'melee',  energy: 4, dps: 45, w: 70, h: 22 },
+  shotgun:{ name: 'Tromblon',    kind: 'gun',    energy: 2, dmg: 10.5, cooldown: 1.0, range: 260, w: 40, h: 16 },
+  mortar: { name: 'Mortier',     kind: 'rocket', energy: 4, dmg: 62, cooldown: 3.1, w: 44, h: 18 },
 };
 
 export const GADGETS = {
@@ -32,6 +35,9 @@ export const GADGETS = {
   backpedal:{ name: 'Rétrofusée',     energy: 1, desc: 'Garde ses distances' },
   repair:   { name: 'Kit de soin',    energy: 2, desc: '+3 PV / seconde', heal: 3 },
   armor:    { name: 'Blindage',       energy: 2, desc: '+20% PV max', hpBoost: 0.2 },
+  spikes:   { name: 'Carapace d’épines', energy: 1, desc: 'Pique les attaquants au contact', thorns: 6 },
+  overclock:{ name: 'Surtension',     energy: 2, desc: '+15% dégâts infligés', dmgBoost: 0.15 },
+  shield:   { name: 'Pare-chocs',     energy: 2, desc: '-15% dégâts subis', dmgReduce: 0.15 },
 };
 
 export const KIND_DEFS = { body: BODIES, wheel: WHEELS, weapon: WEAPONS, gadget: GADGETS };
@@ -70,7 +76,11 @@ export function partStats(part) {
     else s.push(['Dégâts', Math.round(d.dmg * m)], ['Cadence', d.cooldown + 's']);
     s.push(['Coût ⚡', d.energy]);
   } else {
-    s.push(['Effet', d.desc], ['Coût ⚡', d.energy]);
+    s.push(['Effet', d.desc]);
+    if (d.thorns) s.push(['Dégâts contact', d.thorns + '/s']);
+    if (d.dmgBoost) s.push(['Dégâts', '+' + Math.round(d.dmgBoost * 100) + '%']);
+    if (d.dmgReduce) s.push(['Dégâts subis', '-' + Math.round(d.dmgReduce * 100) + '%']);
+    s.push(['Coût ⚡', d.energy]);
   }
   return s;
 }
@@ -156,6 +166,7 @@ export const SETS = {
   sniper:  { name: 'Sniper',     parts: ['surfer', 'tiny', 'laser', 'minigun'], bonus: { ranged: 1.12 }, desc: '+12% dégâts à distance' },
   tank:    { name: 'Forteresse', parts: ['titan', 'big', 'drill', 'armor'],     bonus: { hp: 1.15 },     desc: '+15% PV max' },
   voltige: { name: 'Voltige',    parts: ['pony', 'tiny', 'stinger', 'booster'], bonus: { speed: 1.15 },  desc: '+15% vitesse' },
+  recrue:  { name: 'Recrue',     parts: ['classic', 'basic', 'blade', 'rocket'], bonus: { hp: 1.10 },    desc: '+10% PV max' },
 };
 
 // ---- Mutateurs du Défi du jour ----
@@ -165,6 +176,9 @@ export const MUTATORS = [
   { key: 'glass',   name: 'Canons de verre', desc: 'Dégâts ×1.8 pour tout le monde' },
   { key: 'rockets', name: 'Pluie de feu',    desc: 'Cadence des armes à distance ×2.5' },
   { key: 'bouncy',  name: 'Rebondissant',    desc: 'Tout rebondit comme du caoutchouc' },
+  { key: 'pacifist',name: 'Pattes de velours', desc: 'Les canons s’enrayent : seule la mêlée fonctionne, sortez les griffes !' },
+  { key: 'vampire', name: 'Croc-boulons',    desc: 'Chaque coup porté rend 30% des dégâts en PV à l’attaquant' },
+  { key: 'heavy',   name: 'Poids lourd',     desc: 'Gravité écrasante — tout le monde colle au bitume !' },
 ];
 
 // ---- Peintures de châssis ----

@@ -8,6 +8,7 @@ export function buildCarSpec(lo) {
   const spec = {
     body: { w: bDef.w, h: bDef.h },
     wheels: [], weapons: [], gadgets: lo.gadgets.map(g => g.type),
+    copilot: lo.copilot, // colore le chat de la cabine
     stats: computeCarStats(lo),
     loadout: lo,
   };

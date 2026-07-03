@@ -1,7 +1,7 @@
 // Modèles 3D procéduraux : véhicules, pièces, arène, effets.
 // DA « SAMEDI MATIN » : cel-shading, aplats saturés, encre #26183A.
 import * as THREE from 'three';
-import { partDef } from './data.js';
+import { partDef, COPILOTS } from './data.js';
 import { toonGradient, outlineForGroup, makeBlobShadow, INK } from './render3d.js';
 
 export const S = 0.02; // 50 px physiques = 1 unité 3D
@@ -132,6 +132,65 @@ export function catHead(size = 0.28, color = 0xffd9a0) {
   return g;
 }
 
+// ---------- mascotte : le chat entier, assis, pour le hub ----------
+// userData : { head, tail } pour l'animation idle (12 fps) côté main.js.
+export function catMascot(color = 0xffd9a0) {
+  const g = new THREE.Group();
+  const skin = mat('catSkin' + color, { color, emissive: color, emissiveIntensity: 0.1 });
+  const cream = mat('catBelly', { color: 0xfff6e0 });
+
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 18, 14), skin);
+  body.scale.set(0.85, 1.05, 0.8);
+  body.position.y = 0.52;
+  g.add(body);
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 12), cream);
+  belly.scale.set(0.8, 1, 0.5);
+  belly.position.set(0, 0.48, 0.28);
+  g.add(belly);
+
+  // pattes avant + pieds
+  const pawGeo = new THREE.SphereGeometry(0.13, 10, 8);
+  for (const sx of [-1, 1]) {
+    const paw = new THREE.Mesh(pawGeo, skin);
+    paw.position.set(sx * 0.24, 0.14, 0.3);
+    paw.scale.set(1, 1.35, 1);
+    g.add(paw);
+    const foot = new THREE.Mesh(pawGeo, cream);
+    foot.position.set(sx * 0.26, 0.09, 0.34);
+    foot.scale.set(0.9, 0.55, 1.1);
+    g.add(foot);
+  }
+
+  // tête : sous-groupe animé → contour séparé
+  const head = catHead(0.42, color);
+  head.position.y = 1.22;
+  head.userData.skipInParentOutline = true;
+  const headOutline = outlineForGroup(head, 0.02);
+  if (headOutline) head.add(headOutline);
+  g.add(head);
+
+  // queue : arc de sphères, pivot à la base pour le balancement
+  const tail = new THREE.Group();
+  tail.position.set(0, 0.28, -0.34);
+  const segGeo = new THREE.SphereGeometry(0.11, 10, 8);
+  for (let i = 0; i < 4; i++) {
+    const seg = new THREE.Mesh(segGeo, i === 3 ? cream : skin);
+    const a = i / 3 * 1.5;
+    seg.position.set(0, Math.sin(a) * 0.42, -Math.cos(a) * 0.38 - 0.05);
+    seg.scale.setScalar(1 - i * 0.12);
+    tail.add(seg);
+  }
+  tail.userData.skipInParentOutline = true;
+  const tailOutline = outlineForGroup(tail, 0.016);
+  if (tailOutline) tail.add(tailOutline);
+  g.add(tail);
+
+  const outline = outlineForGroup(g, 0.022);
+  if (outline) g.add(outline);
+  g.userData = { head, tail, body };
+  return g;
+}
+
 // ---------- armes ----------
 function weaponModel(wp) {
   const g = new THREE.Group();
@@ -248,6 +307,56 @@ function weaponModel(wp) {
     blur.visible = false;
     g.add(blur);
     anim.spin.push(barrels); anim.axis = 'x';
+  } else if (wp.type === 'hammer') {
+    // masse : long manche + tête parallélépipédique cerclée
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(h * 0.15, h * 0.18, w * 0.78, 8), METAL_DARK());
+    handle.rotation.z = Math.PI / 2;
+    handle.position.x = -w * 0.11;
+    g.add(handle);
+    const head = new THREE.Mesh(roundedBox(w * 0.34, h * 1.9, h * 1.5, h * 0.16), METAL());
+    head.position.x = w / 2 - w * 0.17;
+    g.add(head);
+    // cerclages sombres qui dessinent le contour de la tête
+    for (const dx of [-w * 0.1, w * 0.1]) {
+      const band = new THREE.Mesh(new THREE.BoxGeometry(w * 0.05, h * 1.96, h * 1.56), METAL_DARK());
+      band.position.x = w / 2 - w * 0.17 + dx;
+      g.add(band);
+    }
+    const pommel = new THREE.Mesh(new THREE.SphereGeometry(h * 0.24, 8, 8), METAL_DARK());
+    pommel.position.x = -w / 2;
+    g.add(pommel);
+  } else if (wp.type === 'shotgun') {
+    // tromblon : crosse + canon court évasé vers l'avant
+    const stock = new THREE.Mesh(roundedBox(w * 0.42, h, h, h * 0.2), METAL_DARK());
+    stock.position.x = -w * 0.26;
+    g.add(stock);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(h * 0.28, h * 0.32, w * 0.46, 10), METAL());
+    barrel.rotation.z = Math.PI / 2;
+    barrel.position.x = w * 0.04;
+    g.add(barrel);
+    const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(h * 0.62, h * 0.3, w * 0.3, 12), METAL());
+    muzzle.rotation.z = -Math.PI / 2; // s'évase vers +x
+    muzzle.position.x = w / 2 - w * 0.13;
+    g.add(muzzle);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(h * 0.62, 0.02, 6, 14), METAL_DARK());
+    ring.rotation.y = Math.PI / 2;
+    ring.position.x = w / 2 + 0.01;
+    g.add(ring);
+  } else if (wp.type === 'mortar') {
+    // mortier : tube trapu incliné vers le ciel + socle
+    const barrel = new THREE.Group();
+    barrel.rotation.z = -0.65;
+    barrel.position.set(-w * 0.06, h * 0.2, 0);
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(h * 0.44, h * 0.52, w * 0.9, 12), METAL_DARK());
+    barrel.add(tube);
+    const mouth = new THREE.Mesh(new THREE.TorusGeometry(h * 0.46, 0.03, 6, 14), METAL());
+    mouth.rotation.x = Math.PI / 2;
+    mouth.position.y = w * 0.45;
+    barrel.add(mouth);
+    g.add(barrel);
+    const base = new THREE.Mesh(roundedBox(w * 0.52, h * 0.5, h * 1.2, h * 0.12), METAL());
+    base.position.y = -h * 0.32;
+    g.add(base);
   }
   g.userData.anim = anim;
   return g;
@@ -420,7 +529,7 @@ export function createCarModel(spec, { shadows = true } = {}) {
   );
   glass.position.set(-bw * 0.12, bh * 0.36, 0);
   bodyGroup.add(glass);
-  const cat = catHead(cabR * 0.62);
+  const cat = catHead(cabR * 0.62, COPILOTS[spec.copilot]?.color); // le co-pilote choisi est visible dans la cabine
   cat.position.set(-bw * 0.12, bh * 0.42, 0);
   cat.rotation.y = Math.PI / 5; // regarde vers l'avant
   bodyGroup.add(cat);

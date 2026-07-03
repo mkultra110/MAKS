@@ -1,20 +1,25 @@
 // Point d'entrée : navigation entre écrans et déroulé d'une partie.
 import * as THREE from 'three';
-import { partDef, upgradeCost, LEAGUES, leagueIndex, SETS, MUTATORS, seededRng, randomPart } from './data.js';
+import { partDef, upgradeCost, LEAGUES, leagueIndex, SETS, MUTATORS, seededRng, randomPart, COPILOTS, PAINTS } from './data.js';
 import {
   state, load, buildLoadout, computeCarStats, makeOpponent, makeRoster,
-  winRewards, defeatReward, prestigeBoost, save, ROSTER_SIZE, MEDALS_TO_ADVANCE,
+  winRewards, defeatReward, prestigeBoost, loadoutValid, paintOwned, save,
+  ROSTER_SIZE, MEDALS_TO_ADVANCE,
 } from './state.js';
 import { buildCarSpec } from './car.js';
-import { createRenderer, createStudioScene, disposeModel } from './render3d.js';
-import { createCarModel, poseCarStatic } from './models3d.js';
-import { carSnapshot, partThumb, avatarThumb } from './thumbs.js';
+import { createRenderer, createStudioScene, addHubDecor, disposeModel } from './render3d.js';
+import { createCarModel, poseCarStatic, catMascot } from './models3d.js';
+import { carSnapshot, partThumb, avatarThumb, copilotThumb } from './thumbs.js';
 import { initGarage, renderGarage, startPreview, stopPreview } from './garage.js';
 import { startBattle } from './battle.js';
-import { unlockAudio, handleVisibility, sfxClick, sfxWin, sfxLose, sfxMedal, sfxPromote } from './sfx.js';
+import {
+  unlockAudio, handleVisibility, setMuted, sfxClick, sfxWin, sfxLose,
+  sfxMedal, sfxPromote, sfxMeow, sfxBuy, sfxTick, sfxClang, startMusic, stopMusic,
+} from './sfx.js';
 
 // Vibrations : plugin Capacitor Haptics si présent (app native), sinon vibrate.
 function haptic(style = 'MEDIUM') {
+  if (state.settings && !state.settings.haptics) return;
   try {
     const h = window.Capacitor?.Plugins?.Haptics;
     if (h) h.impact({ style });
@@ -22,7 +27,7 @@ function haptic(style = 'MEDIUM') {
   } catch (e) {}
 }
 
-const PLAYER_NAME = 'Toi';
+const pName = () => state.playerName || 'Toi';
 let pendingOpponent = null;
 let pendingQuick = false;
 let gauntlet = null; // { fought, coins } quand le Grand Combat est en cours
@@ -35,7 +40,9 @@ function show(id) {
     startPreview();
     renderDailyBanner();
   } else stopPreview();
-  if (id !== 'screen-splash') stopSplash();
+  if (id === 'screen-hub') { renderHub(); resumeHub(); } else pauseHub();
+  // musique de menu partout sauf en combat (le combat gère la sienne)
+  if (id !== 'screen-battle' && id !== 'screen-loading') startMusic('menu');
   // iris wipe cartoon
   const iris = document.getElementById('iris');
   if (iris) {
@@ -45,52 +52,213 @@ function show(id) {
   }
 }
 
-// ---------- écran d'accueil : vitrine 3D ----------
-let splash = null;
-function startSplash() {
-  const canvas = document.getElementById('splash-canvas');
+// ---------- hub : la place du village (scène persistante, en pause hors écran) ----------
+let hub = null;
+let hubCarKey = '';
+const mascotState = { jumpT: -9, bubbleTimer: 0 };
+
+function loadoutKey(lo) {
+  return JSON.stringify([
+    lo.body && (lo.body.id + (lo.body.paint || '')),
+    lo.wheels.map(w => w.id), lo.weapons.map(w => w.id), lo.gadgets.map(g => g.id),
+  ]);
+}
+
+function ensureHub() {
+  if (hub) return;
+  const canvas = document.getElementById('hub-canvas');
   const renderer = createRenderer(canvas);
   const scene = createStudioScene(renderer);
+  addHubDecor(scene); // stade, panneau MAKS, arbres : un vrai lieu
   const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
   const holder = new THREE.Group();
   scene.add(holder);
-  const lo = buildLoadout();
-  if (lo.body) {
-    const model = createCarModel(buildCarSpec(lo));
-    poseCarStatic(model, 1);
-    holder.add(model);
-  }
-  splash = { renderer, scene, camera, holder, raf: 0, running: true };
-  const loop = now => {
-    if (!splash || !splash.running) return;
-    splash.raf = requestAnimationFrame(loop);
-    const w = canvas.clientWidth, h = canvas.clientHeight;
-    if (w && canvas.width !== Math.floor(w * renderer.getPixelRatio())) {
-      renderer.setSize(w, h, false);
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-    }
-    holder.rotation.y = now / 3800;
-    const vFov = camera.fov * Math.PI / 180;
-    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
-    const dist = Math.max(4.8 / (2 * Math.tan(hFov / 2)), 6);
-    camera.position.set(Math.sin(now / 9000) * 1.4, 2.1 + Math.sin(now / 5200) * 0.3, dist);
-    camera.lookAt(0, 1.0, 0);
-    renderer.render(scene, camera);
-  };
-  splash.raf = requestAnimationFrame(loop);
+  const mascotHolder = new THREE.Group();
+  mascotHolder.position.set(-2.7, -0.44, 1.5);
+  mascotHolder.rotation.y = 0.55;
+  scene.add(mascotHolder);
+  hub = { renderer, scene, camera, holder, mascotHolder, mascot: null, mascotColor: null, raf: 0, running: false };
+
+  // tap sur la mascotte → saut + miaou + phrase
+  canvas.addEventListener('pointerdown', e => {
+    if (!hub.mascot) return;
+    const r = canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((e.clientX - r.left) / r.width) * 2 - 1,
+      -((e.clientY - r.top) / r.height) * 2 + 1
+    );
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, hub.camera);
+    if (ray.intersectObject(hub.mascotHolder, true).length) pokeMascot();
+  });
 }
-function stopSplash() {
-  if (!splash) return;
-  splash.running = false;
-  cancelAnimationFrame(splash.raf);
-  // libère complètement le contexte WebGL de l'accueil (on n'y revient jamais)
-  splash.scene.background?.dispose?.();
-  disposeModel(splash.scene, { textures: true });
-  splash.scene.clear();
-  splash.renderer.dispose();
-  splash.renderer.forceContextLoss?.();
-  splash = null;
+
+// Reconstruit la voiture (si le montage a changé) et la mascotte (si le co-pilote a changé).
+function refreshHubModels() {
+  ensureHub();
+  const lo = buildLoadout();
+  const key = loadoutKey(lo);
+  if (key !== hubCarKey) {
+    hubCarKey = key;
+    disposeModel(hub.holder);
+    hub.holder.clear();
+    if (lo.body) {
+      const model = createCarModel(buildCarSpec(lo));
+      poseCarStatic(model, 1);
+      hub.holder.add(model);
+      hub.carBodyY = model.userData.bodyGroup.position.y; // base pour le bob idle
+    }
+  }
+  const color = COPILOTS[state.copilot]?.color ?? 0xffd9a0;
+  if (hub.mascotColor !== color) {
+    hub.mascotColor = color;
+    disposeModel(hub.mascotHolder);
+    hub.mascotHolder.clear();
+    hub.mascot = catMascot(color);
+    hub.mascotHolder.add(hub.mascot);
+  }
+}
+
+function hubLoop(now) {
+  if (!hub || !hub.running) return;
+  hub.raf = requestAnimationFrame(hubLoop);
+  const canvas = hub.renderer.domElement;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (w && canvas.width !== Math.floor(w * hub.renderer.getPixelRatio())) {
+    hub.renderer.setSize(w, h, false);
+    hub.camera.aspect = w / h;
+    hub.camera.updateProjectionMatrix();
+  }
+  hub.holder.rotation.y = now / 4200;
+  // la vitrine vit : bob de caisse, armes qui tournent lentement (12 fps cranté)
+  const showCar = hub.holder.children[0];
+  if (showCar?.userData?.bodyGroup) {
+    const t12 = Math.floor(now / 1000 * 12) / 12;
+    const u = showCar.userData;
+    u.bodyGroup.position.y = (hub.carBodyY || 0) + Math.sin(t12 * Math.PI * 2 / 2.4) * 0.03;
+    u.bodyGroup.rotation.z = Math.sin(t12 * Math.PI * 2 / 2.4) * 0.008;
+    for (const anim of u.spins || []) {
+      for (const m of anim.spin || []) m.rotation[anim.axis || 'z'] = t12 * Math.PI;
+    }
+  }
+  // mascotte : idle crantée 12 fps (queue, tête, respiration) + saut au tap
+  if (hub.mascot) {
+    const tq = Math.floor(now / 1000 * 12) / 12;
+    const u = hub.mascot.userData;
+    u.tail.rotation.z = Math.sin(tq * Math.PI * 2 / 1.8) * 0.3;
+    u.head.rotation.z = Math.sin(tq * Math.PI * 2 / 3.4) * 0.07;
+    u.body.scale.y = 1.05 * (1 + Math.sin(tq * Math.PI * 2 / 2.6) * 0.02);
+    const since = now / 1000 - mascotState.jumpT;
+    hub.mascot.position.y = since < 0.45
+      ? Math.sin(Math.min(1, Math.floor(since / 0.45 * 12) / 12) * Math.PI) * 0.55
+      : 0;
+  }
+  const vFov = hub.camera.fov * Math.PI / 180;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * hub.camera.aspect);
+  const dist = Math.max(5.6 / (2 * Math.tan(hFov / 2)), 7);
+  hub.camera.position.set(Math.sin(now / 11000) * 1.2, 2.2 + Math.sin(now / 6200) * 0.25, dist);
+  hub.camera.lookAt(-0.5, 0.9, 0);
+  hub.renderer.render(hub.scene, hub.camera);
+  // la bulle de dialogue suit la tête de la mascotte
+  const bubble = document.getElementById('mascot-bubble');
+  if (!bubble.classList.contains('hidden') && hub.mascot) {
+    const p = new THREE.Vector3(0, 2.0, 0);
+    hub.mascotHolder.localToWorld(p);
+    p.project(hub.camera);
+    bubble.style.left = ((p.x * 0.5 + 0.5) * w) + 'px';
+    bubble.style.top = ((-p.y * 0.5 + 0.5) * h) + 'px';
+  }
+}
+
+function resumeHub() {
+  ensureHub();
+  refreshHubModels();
+  if (hub.running) return;
+  hub.running = true;
+  hub.raf = requestAnimationFrame(hubLoop);
+}
+function pauseHub() {
+  if (!hub) return;
+  hub.running = false;
+  cancelAnimationFrame(hub.raf);
+  document.getElementById('mascot-bubble')?.classList.add('hidden');
+}
+
+// La mascotte parle : conseils utiles d'abord, vannes sinon.
+const MASCOT_FUN = [
+  'Miaou !', 'On va tout casser !', 'Griffes dehors !', 'Je crois en toi. Un peu.',
+  'Encore un combat, allez !', 'Mon pelage sent la victoire.', 'Le boss ? Même pas peur.',
+  'Nourris-moi de médailles !', 'Ta machine ronronne bien.',
+];
+function mascotPhrase() {
+  const tips = [];
+  if (state.dailyDone !== todayKey()) tips.push('Le Défi du jour t\'attend — une pièce 3★ à la clé !');
+  const s = computeCarStats(buildLoadout());
+  if (s.used > s.capacity) tips.push('Ton énergie déborde, file au garage !');
+  if (state.medals.length >= MEDALS_TO_ADVANCE - 1) tips.push('Plus qu\'une médaille pour la promotion !');
+  if (tips.length && Math.random() < 0.65) return tips[Math.floor(Math.random() * tips.length)];
+  return MASCOT_FUN[Math.floor(Math.random() * MASCOT_FUN.length)];
+}
+function pokeMascot() {
+  mascotState.jumpT = performance.now() / 1000;
+  sfxMeow();
+  haptic();
+  const bubble = document.getElementById('mascot-bubble');
+  bubble.textContent = mascotPhrase();
+  bubble.classList.remove('hidden');
+  clearTimeout(mascotState.bubbleTimer);
+  mascotState.bubbleTimer = setTimeout(() => bubble.classList.add('hidden'), 2600);
+}
+
+function renderHub() {
+  document.getElementById('hub-coins').textContent = state.coins;
+  document.getElementById('profile-name').textContent = pName();
+  document.getElementById('profile-avatar').src = avatarThumb(COPILOTS[state.copilot]?.color ?? 0xffd9a0);
+  document.getElementById('hub-medals').textContent = `🏅${state.medals.length}/${MEDALS_TO_ADVANCE}`;
+  document.getElementById('hub-fight-label').textContent = `COMBATTRE · Ét. ${state.stage}`;
+  const li = leagueIndex(state.stage);
+  const stageChip = document.getElementById('hub-stage');
+  stageChip.textContent = `${state.prestige > 0 ? `⭐${state.prestige}·` : ''}Ét. ${state.stage}`;
+  stageChip.parentElement.querySelector('.ic').style.color = LEAGUES[li].color;
+  const valid = loadoutValid(buildLoadout());
+  document.getElementById('hub-fight').disabled = !valid;
+  document.getElementById('hub-quick').disabled = !valid;
+  document.getElementById('hub-bet').disabled = state.coins < 10;
+  renderDailyBanner();
+}
+
+// ---------- écran de chargement ----------
+const LOAD_TIPS = [
+  'Astuce : les scies mordent fort à l\'arrière des machines.',
+  'Astuce : 3 pièces d\'un même set activent un bonus d\'équipe.',
+  'Astuce : recycle tes doublons pour financer tes améliorations.',
+  'Astuce : le Défi du jour offre une pièce 3★ garantie.',
+  'Astuce : les boss de fin de ligue paient 50% de plus.',
+  'Astuce : tape sur ton chat au hub, il adore ça.',
+  'Astuce : la Boutique vend des caisses pleines de pièces.',
+];
+function runLoading() {
+  const fill = document.getElementById('load-fill');
+  document.getElementById('load-tip').textContent =
+    LOAD_TIPS[Math.floor(Math.random() * LOAD_TIPS.length)];
+  const t0 = performance.now();
+  let ready = false;
+  Promise.resolve(document.fonts?.ready).then(() => {
+    ensureHub();
+    refreshHubModels();
+    ready = true;
+  });
+  const MIN = 1300;
+  const step = now => {
+    const el = now - t0;
+    let p = Math.min(0.92, el / MIN);
+    if (ready && el >= MIN) p = 1;
+    // progression crantée façon stop-motion
+    fill.style.width = Math.round(Math.floor(p * 14) / 14 * 100) + '%';
+    if (p >= 1) { setTimeout(() => show('screen-hub'), 160); return; }
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 
 // ---------- confettis de victoire ----------
@@ -138,16 +306,33 @@ function confetti() {
   requestAnimationFrame(loop);
 }
 
-// Compteur animé de pièces gagnées.
+// Compteur animé de pièces gagnées (avec petits ticks sonores).
 function countUp(el, target) {
   const t0 = performance.now();
   const dur = 700;
+  let lastTick = -1;
   const loop = now => {
     const k = Math.min(1, (now - t0) / dur);
     el.textContent = '+' + Math.round(target * (1 - Math.pow(1 - k, 3)));
+    const tick = Math.floor(k * 8);
+    if (tick !== lastTick) { lastTick = tick; if (k < 1) sfxTick(); }
     if (k < 1) requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
+}
+
+// Révélation en cascade sur l'écran résultat : chaque élément arrive avec un délai.
+let resultTimers = [];
+function cascade(steps) {
+  for (const t of resultTimers) clearTimeout(t);
+  resultTimers = steps.map(([ms, fn]) => setTimeout(fn, ms));
+}
+function addBit(text) {
+  const el = document.createElement('div');
+  el.className = 'result-bit';
+  el.textContent = text;
+  document.getElementById('result-bits').appendChild(el);
+  sfxClick();
 }
 
 function statLine(lo, boost = 1) {
@@ -170,15 +355,20 @@ function renderRoster() {
   // score du joueur pour situer la difficulté de chaque adversaire
   const ps = computeCarStats(buildLoadout());
   const playerScore = Math.max(1, ps.hp * ps.atk);
-  for (const opp of roster) {
+  const nextIdx = roster.find(o => !state.medals.includes(o.idx))?.idx;
+  roster.forEach((opp, i) => {
     const beaten = state.medals.includes(opp.idx);
     const os = computeCarStats(opp.loadout);
     const ratio = (os.hp * opp.statBoost * os.atk * opp.dmgBoost) / playerScore;
     const diff = opp.boss ? 'boss' : (ratio < 0.75 ? 'easy' : (ratio > 1.4 ? 'hard' : ''));
     const el = document.createElement('div');
-    el.className = 'roster-card' + (beaten ? ' beaten' : '') + (diff ? ' ' + diff : '');
+    el.className = 'roster-card' + (beaten ? ' beaten' : '') + (diff ? ' ' + diff : '')
+      + (!beaten && opp.idx === nextIdx ? ' next' : '');
+    el.style.animationDelay = (i * 0.045) + 's';
+    // la MACHINE adverse (pas juste l'avatar), sur fond teinté à la couleur du chat
     const img = document.createElement('img');
-    img.src = avatarThumb(opp.avatar);
+    img.src = carSnapshot(opp.loadout, { dir: -1, w: 128, h: 96 });
+    img.style.background = '#' + opp.avatar.toString(16).padStart(6, '0') + '55';
     el.appendChild(img);
     const info = document.createElement('div');
     info.style.minWidth = '0';
@@ -191,15 +381,21 @@ function renderRoster() {
     st.textContent = statLine(opp.loadout, opp.statBoost);
     info.appendChild(st);
     el.appendChild(info);
-    if (!beaten) {
-      const medal = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      medal.setAttribute('class', 'rc-medal');
-      medal.innerHTML = '<use href="#i-medal"/>';
-      el.appendChild(medal);
-      el.addEventListener('click', () => { sfxClick(); gotoVs(false, opp); });
+    if (diff && !beaten) {
+      const tag = document.createElement('div');
+      tag.className = 'rc-diff ' + diff;
+      tag.textContent = opp.boss ? '👑 BOSS' : (diff === 'easy' ? 'FACILE' : 'COSTAUD');
+      el.appendChild(tag);
     }
+    if (!beaten && opp.idx === nextIdx) {
+      const tag = document.createElement('div');
+      tag.className = 'rc-next';
+      tag.textContent = 'À TOI !';
+      el.appendChild(tag);
+    }
+    if (!beaten) el.addEventListener('click', () => { sfxClick(); gotoVs(false, opp); });
     list.appendChild(el);
-  }
+  });
   const unbeaten = roster.filter(o => !state.medals.includes(o.idx));
   document.getElementById('btn-gauntlet').disabled = unbeaten.length === 0;
 }
@@ -222,16 +418,274 @@ function dailyOfToday() {
 }
 
 function renderDailyBanner() {
-  const el = document.getElementById('daily-banner');
-  if (!el) return;
-  el.classList.remove('hidden');
-  if (state.dailyDone === todayKey()) {
-    el.className = 'daily-banner done';
-    el.textContent = '✓ Défi du jour réussi — reviens demain !';
-  } else {
-    const { mutator } = dailyOfToday();
-    el.className = 'daily-banner';
-    el.textContent = `🎯 Défi du jour : ${mutator.name} — gagne une pièce 3★ !`;
+  for (const id of ['daily-banner', 'hub-daily']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.classList.remove('hidden');
+    if (state.dailyDone === todayKey()) {
+      el.className = 'daily-banner done';
+      // décompte réel jusqu'au prochain défi (minuit)
+      const now = new Date();
+      const next = new Date(now);
+      next.setHours(24, 0, 0, 0);
+      const mins = Math.max(0, Math.floor((next - now) / 60000));
+      el.textContent = `✓ Défi réussi — prochain dans ${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}`;
+    } else {
+      const { mutator } = dailyOfToday();
+      el.className = 'daily-banner';
+      el.textContent = `🎯 Défi du jour : ${mutator.name} — gagne une pièce 3★ !`;
+    }
+  }
+}
+
+// ---------- Boutique : offre du jour, caisses, peintures, co-pilotes ----------
+const CRATES = [
+  { key: 'bois', name: 'Caisse Bois', emoji: '📦', desc: '2 pièces surprises', price: 120,
+    roll: rng => [randomPart(rng, state.stage), randomPart(rng, state.stage)] },
+  { key: 'or', name: 'Caisse Or', emoji: '🧰', desc: '3 pièces, dont une 3★ minimum', price: 350,
+    roll: rng => [randomPart(rng, state.stage, 3), randomPart(rng, state.stage), randomPart(rng, state.stage)] },
+  { key: 'etoile', name: 'Caisse Étoile', emoji: '🌟', desc: '3 pièces 3★+, dont une 4★ minimum', price: 900,
+    roll: rng => [randomPart(rng, state.stage, 4), randomPart(rng, state.stage, 3), randomPart(rng, state.stage, 3)] },
+];
+const PAINT_PRICE = 60;
+const COPILOT_PRICE = 450;
+
+function shopDailyOffer() {
+  const day = todayKey();
+  const seed = [...day].reduce((a, c) => a * 33 + c.charCodeAt(0), 11) & 0x7fffffff;
+  const rng = seededRng(seed ^ 0x5a5a);
+  return { day, part: randomPart(rng, state.stage, 3), price: 100 + state.stage * 25 };
+}
+
+function priceBtn(price, disabled, fn) {
+  const b = document.createElement('button');
+  b.className = 'btn gold price-btn';
+  if (typeof price === 'number') {
+    b.innerHTML = '<svg class="ic"><use href="#i-coin"/></svg> ' + price;
+  } else b.textContent = price;
+  b.disabled = disabled;
+  b.addEventListener('click', e => { e.stopPropagation(); sfxClick(); fn(); });
+  return b;
+}
+
+function shopCard(cls, media, name, desc, btn) {
+  const el = document.createElement('div');
+  el.className = 'shop-card ' + cls;
+  el.appendChild(media);
+  const info = document.createElement('div');
+  info.className = 'shop-info';
+  const nm = document.createElement('div');
+  nm.className = 'shop-name';
+  nm.textContent = name;
+  info.appendChild(nm);
+  const de = document.createElement('div');
+  de.className = 'shop-desc';
+  de.textContent = desc;
+  info.appendChild(de);
+  el.appendChild(info);
+  el.appendChild(btn);
+  return el;
+}
+
+function renderShop() {
+  document.getElementById('shop-coins').textContent = state.coins;
+  const list = document.getElementById('shop-list');
+  list.innerHTML = '';
+  const section = title => {
+    const h = document.createElement('div');
+    h.className = 'shop-section';
+    h.textContent = title;
+    list.appendChild(h);
+  };
+
+  // — offre du jour —
+  section('⏰ Offre du jour');
+  const offer = shopDailyOffer();
+  const sold = state.shopDaily === offer.day;
+  const oimg = document.createElement('img');
+  oimg.src = partThumb(offer.part);
+  list.appendChild(shopCard(
+    'offer' + (sold ? ' sold' : ''), oimg,
+    `${partDef(offer.part).name} ${'★'.repeat(offer.part.stars)}`,
+    sold ? 'Reviens demain pour une nouvelle offre !' : `niv. ${offer.part.level} · −50% aujourd'hui seulement !`,
+    priceBtn(sold ? 'Vendu !' : offer.price, sold || state.coins < offer.price, () => {
+      state.coins -= offer.price;
+      state.shopDaily = offer.day;
+      state.inventory.push(offer.part);
+      save();
+      sfxBuy();
+      haptic();
+      openCrate('Bonne affaire !', [offer.part]);
+      renderShop();
+    })
+  ));
+
+  // — caisses —
+  section('📦 Caisses de pièces');
+  for (const cr of CRATES) {
+    const em = document.createElement('div');
+    em.className = 'crate-emoji';
+    em.textContent = cr.emoji;
+    list.appendChild(shopCard(
+      'crate-' + cr.key, em, cr.name, cr.desc,
+      priceBtn(cr.price, state.coins < cr.price, () => {
+        state.coins -= cr.price;
+        const parts = cr.roll(seededRng((Date.now() & 0x7fffffff) ^ (cr.price * 31)));
+        state.inventory.push(...parts);
+        save();
+        sfxBuy();
+        haptic('HEAVY');
+        openCrate(cr.name + ' ouverte !', parts);
+        renderShop();
+      })
+    ));
+  }
+
+  // — peintures (débloquées pour toutes les machines) —
+  section('🎨 Peintures — pour toutes tes machines');
+  const pg = document.createElement('div');
+  pg.className = 'paint-shop';
+  for (const color of PAINTS) {
+    const owned = paintOwned(color, PAINTS);
+    const b = document.createElement('button');
+    b.className = 'paint-swatch big' + (owned ? ' owned' : '');
+    b.style.background = `linear-gradient(180deg, ${color}, ${color}cc)`;
+    if (owned) b.textContent = '✓';
+    else {
+      const tag = document.createElement('span');
+      tag.className = 'paint-price';
+      tag.textContent = PAINT_PRICE;
+      b.appendChild(tag);
+      b.disabled = state.coins < PAINT_PRICE;
+      b.addEventListener('click', () => {
+        sfxClick();
+        state.coins -= PAINT_PRICE;
+        state.paints.push(color);
+        save();
+        sfxBuy();
+        renderShop();
+      });
+    }
+    pg.appendChild(b);
+  }
+  list.appendChild(pg);
+
+  // — co-pilotes en déblocage anticipé —
+  const li = leagueIndex(state.stage);
+  const lockedCp = Object.entries(COPILOTS).filter(([id, cp]) => li < cp.unlock && !state.copilotsBought.includes(id));
+  if (lockedCp.length) {
+    section('🐱 Co-pilotes — déblocage anticipé');
+    for (const [id, cp] of lockedCp) {
+      const img = document.createElement('img');
+      img.src = copilotThumb(id);
+      list.appendChild(shopCard(
+        'copilot', img, cp.name, `${cp.passive} · ${cp.active}`,
+        priceBtn(COPILOT_PRICE, state.coins < COPILOT_PRICE, () => {
+          state.coins -= COPILOT_PRICE;
+          state.copilotsBought.push(id);
+          state.copilot = id;
+          save();
+          sfxBuy();
+          haptic('HEAVY');
+          renderShop();
+        })
+      ));
+    }
+  }
+}
+
+// Révélation des pièces obtenues (caisse ou offre), une par une.
+function openCrate(title, parts) {
+  document.getElementById('crate-title').textContent = title;
+  const wrap = document.getElementById('crate-parts');
+  wrap.innerHTML = '';
+  parts.forEach((p, i) => {
+    const el = document.createElement('div');
+    el.className = 'crate-part';
+    el.style.animationDelay = (0.15 + i * 0.3) + 's';
+    const img = document.createElement('img');
+    img.src = partThumb(p);
+    el.appendChild(img);
+    const nm = document.createElement('div');
+    nm.className = 'crate-part-name';
+    nm.textContent = `${partDef(p).name} ${'★'.repeat(p.stars)} · niv. ${p.level}`;
+    el.appendChild(nm);
+    wrap.appendChild(el);
+  });
+  document.getElementById('crate-sheet').classList.remove('hidden');
+}
+
+// ---------- La carte du championnat : le parcours des 6 ligues ----------
+function renderSeason() {
+  const path = document.getElementById('season-path');
+  path.innerHTML = '';
+  const curLi = leagueIndex(state.stage);
+  LEAGUES.forEach((lg, i) => {
+    const last = (LEAGUES[i + 1]?.min ?? 25) - 1;
+    const el = document.createElement('div');
+    const status = i < curLi ? 'done' : (i === curLi ? 'current' : 'locked');
+    el.className = 'season-league ' + status;
+    el.style.setProperty('--lg', lg.color);
+    const head = document.createElement('div');
+    head.className = 'sl-head';
+    head.innerHTML = `<span class="sl-dot"></span><span class="sl-name">Ligue ${lg.name}</span>` +
+      `<span class="sl-range">Ét. ${lg.min}–${last}</span>`;
+    el.appendChild(head);
+    const sub = document.createElement('div');
+    sub.className = 'sl-sub';
+    if (status === 'done') sub.textContent = '✓ Conquise !';
+    else if (status === 'current') {
+      sub.textContent = `Tu es à l'étape ${state.stage} · ${state.medals.length}/${MEDALS_TO_ADVANCE} médailles`;
+    } else sub.textContent = `Boss au bout · nouvelles arènes`;
+    el.appendChild(sub);
+    if (status === 'current') {
+      const bar = document.createElement('div');
+      bar.className = 'sl-bar';
+      const span = last - lg.min + 1;
+      const fill = document.createElement('div');
+      fill.style.width = Math.round(((state.stage - lg.min) + state.medals.length / MEDALS_TO_ADVANCE) / span * 100) + '%';
+      bar.appendChild(fill);
+      el.appendChild(bar);
+    }
+    path.appendChild(el);
+  });
+  const prestige = document.createElement('div');
+  prestige.className = 'season-league prestige' + (state.prestige > 0 ? ' done' : '');
+  prestige.innerHTML = `<div class="sl-head"><span class="sl-dot"></span><span class="sl-name">⭐ PRESTIGE</span>` +
+    `<span class="sl-range">après l'ét. 24</span></div>` +
+    `<div class="sl-sub">${state.prestige > 0 ? `Déjà ${state.prestige} prestige${state.prestige > 1 ? 's' : ''} — légende vivante !` : 'Recommence plus fort : +4% de puissance permanente'}</div>`;
+  path.appendChild(prestige);
+}
+
+// ---------- Réglages & profil ----------
+function renderSettings() {
+  document.getElementById('tgl-sound').classList.toggle('on', state.settings.sound);
+  document.getElementById('tgl-haptics').classList.toggle('on', state.settings.haptics);
+}
+
+function renderProfile() {
+  document.getElementById('profile-img').src = avatarThumb(COPILOTS[state.copilot]?.color ?? 0xffd9a0);
+  document.getElementById('profile-input').value = pName();
+  const li = leagueIndex(state.stage);
+  const rows = [
+    ['Ligue', LEAGUES[li].name],
+    ['Étape', state.stage],
+    ['Meilleure étape', state.bestStage],
+    ['Victoires', state.totalWins],
+    ['Prestige', state.prestige > 0 ? '⭐'.repeat(state.prestige) : '—'],
+    ['Pièces d\'or', state.coins],
+    ['Pièces possédées', state.inventory.length],
+  ];
+  const grid = document.getElementById('profile-stats');
+  grid.innerHTML = '';
+  for (const [k, v] of rows) {
+    const el = document.createElement('div');
+    el.className = 'pstat';
+    const small = document.createElement('small');
+    small.textContent = k;
+    el.appendChild(small);
+    el.appendChild(document.createTextNode(String(v)));
+    grid.appendChild(el);
   }
 }
 
@@ -244,12 +698,15 @@ function gotoDaily() {
   const lo = buildLoadout();
   document.getElementById('vs-me').src = carSnapshot(lo, { dir: 1 });
   document.getElementById('vs-them').src = carSnapshot(daily.opponent.loadout, { dir: -1 });
-  document.getElementById('vs-me-name').textContent = PLAYER_NAME;
+  document.getElementById('vs-me-name').textContent = pName();
   document.getElementById('vs-me-stats').textContent = statLine(lo);
   document.getElementById('vs-them-name').textContent = daily.opponent.name;
   document.getElementById('vs-them-stats').textContent =
     `${daily.mutator.name} : ${daily.mutator.desc}`;
+  document.getElementById('vs-stake').textContent =
+    `Récompense : pièce ★★★ garantie + ${80 + state.stage * 20} pièces`;
   show('screen-vs');
+  vsDrama();
 }
 
 // ---------- les Paris : deux machines s'affrontent, on mise ----------
@@ -290,19 +747,35 @@ function openBets(fresh = true) {
   const wrap = document.getElementById('bet-amounts');
   wrap.innerHTML = '';
   if (betAmount > state.coins) betAmount = amounts.find(a => a <= state.coins) || 0;
-  for (const a of amounts) {
-    const chip = document.createElement('button');
-    chip.className = 'bet-chip' + (a === betAmount ? ' selected' : '');
-    chip.textContent = a;
-    chip.disabled = a > state.coins;
-    chip.addEventListener('click', () => { sfxClick(); betAmount = a; openBets(false); });
-    wrap.appendChild(chip);
+  if (betAmount === 0) {
+    // impasse : pas de quoi miser — on propose une sortie au lieu de tout griser
+    const msg = document.createElement('div');
+    msg.className = 'bet-broke';
+    msg.textContent = 'Pas assez de pièces pour miser (min. 10).';
+    wrap.appendChild(msg);
+    const go = document.createElement('button');
+    go.className = 'btn primary';
+    go.textContent = '⚡ Gagne un combat Rapide !';
+    go.addEventListener('click', () => { sfxClick(); gauntlet = null; gotoVs(true); });
+    wrap.appendChild(go);
+  } else {
+    for (const a of amounts) {
+      const chip = document.createElement('button');
+      chip.className = 'bet-chip' + (a === betAmount ? ' selected' : '');
+      chip.textContent = a;
+      chip.disabled = a > state.coins;
+      chip.addEventListener('click', () => { sfxClick(); betAmount = a; openBets(false); });
+      wrap.appendChild(chip);
+    }
   }
   const can = betAmount > 0 && betAmount <= state.coins;
-  document.getElementById('btn-bet-a').disabled = !can;
-  document.getElementById('btn-bet-b').disabled = !can;
-  document.getElementById('btn-bet-a').textContent = `Parier ${betAmount} sur A`;
-  document.getElementById('btn-bet-b').textContent = `Parier ${betAmount} sur B`;
+  const btnA = document.getElementById('btn-bet-a');
+  const btnB = document.getElementById('btn-bet-b');
+  btnA.disabled = !can;
+  btnB.disabled = !can;
+  const short = n => (n.length > 11 ? n.slice(0, 10) + '…' : n);
+  btnA.innerHTML = `${short(betPair.a.name)}<small>gain ${Math.round(betAmount * odds.a)}</small>`;
+  btnB.innerHTML = `${short(betPair.b.name)}<small>gain ${Math.round(betAmount * odds.b)}</small>`;
   show('screen-bet');
 }
 
@@ -317,6 +790,7 @@ function placeBet(choice) {
   document.getElementById('hud-name-l').textContent = 'A · ' + pendingBet.a.name;
   document.getElementById('hud-name-r').textContent = 'B · ' + pendingBet.b.name;
   document.getElementById('battle-msg').classList.add('hidden');
+  battleIntro(pendingBet.a.name, pendingBet.b.name);
   startBattle({
     playerLoadout: pendingBet.a.loadout,
     playerBoost: pendingBet.a.statBoost,
@@ -333,26 +807,36 @@ function onBetEnd(result) {
   pendingBet = null;
   const winnerA = result.win; // "win" = la machine de gauche (A) a gagné
   const won = (bet.choice === 'a') === winnerA;
-  const winnerName = winnerA ? bet.a.name : bet.b.name;
+  const winner = winnerA ? bet.a : bet.b;
   const title = document.getElementById('result-title');
   const btnNext = document.getElementById('btn-next');
+  const carEl = document.getElementById('result-car');
+  cascade([]); // stoppe une éventuelle cascade précédente
   document.getElementById('reward-part').classList.add('hidden');
   document.getElementById('result-league').classList.add('hidden');
   document.getElementById('result-progress').classList.add('hidden');
+  document.getElementById('result-bits').innerHTML = '';
+  document.getElementById('result-rewards').classList.remove('hidden');
+  document.getElementById('btn-result-ok').classList.remove('hidden');
+  // la machine victorieuse, en portrait
+  carEl.src = carSnapshot(winner.loadout, { dir: winnerA ? 1 : -1, w: 360, h: 200 });
+  carEl.classList.remove('hidden');
+  const odds = bet.choice === 'a' ? bet.odds.a : bet.odds.b;
   if (won) {
-    const payout = Math.round(bet.amount * (bet.choice === 'a' ? bet.odds.a : bet.odds.b));
+    const payout = Math.round(bet.amount * odds);
     state.coins += payout;
     save();
     sfxWin();
     title.textContent = 'PARI GAGNÉ !';
     title.className = 'result-title win';
-    document.getElementById('result-sub').textContent = `${winnerName} l'emporte — tu empoches ${payout} pièces !`;
+    document.getElementById('result-sub').textContent = `${winner.name} l'emporte !`;
+    addBit(`Mise ${bet.amount} × cote ${odds.toFixed(1)} = ${payout} pièces`);
     countUp(document.getElementById('reward-coins'), payout);
   } else {
     sfxLose();
     title.textContent = 'PARI PERDU…';
     title.className = 'result-title lose';
-    document.getElementById('result-sub').textContent = `${winnerName} l'emporte. Mise perdue (${bet.amount} pièces).`;
+    document.getElementById('result-sub').textContent = `${winner.name} l'emporte. Mise perdue (${bet.amount} pièces).`;
     document.getElementById('reward-coins').textContent = '-' + bet.amount;
   }
   btnNext.textContent = 'Nouveau pari';
@@ -364,6 +848,23 @@ function onBetEnd(result) {
 }
 
 // ---------- déroulé d'une partie ----------
+// Statistiques comparées : la meilleure valeur en vert ▲, la moins bonne en rouge ▼.
+function vsCompare(lo, opp) {
+  const me = computeCarStats(lo);
+  const os = computeCarStats(opp.loadout);
+  const them = { hp: os.hp * opp.statBoost, atk: os.atk * opp.dmgBoost };
+  const cls = (a, b) => (a > b * 1.05 ? 'up' : (b > a * 1.05 ? 'down' : ''));
+  const span = (v, c) => `<span class="${c}">${Math.round(v)}${c === 'up' ? '▲' : (c === 'down' ? '▼' : '')}</span>`;
+  document.getElementById('vs-me-stats').innerHTML =
+    `PV ${span(me.hp, cls(me.hp, them.hp))} · ATQ ${span(me.atk, cls(me.atk, them.atk))}`;
+  document.getElementById('vs-them-stats').innerHTML =
+    `PV ${span(them.hp, cls(them.hp, me.hp))} · ATQ ${span(them.atk, cls(them.atk, me.atk))}`;
+}
+// Le clang du badge VS après l'entrée des deux cartes.
+function vsDrama() {
+  setTimeout(() => { sfxClang(); haptic(); }, 480);
+}
+
 function gotoVs(quick, opponent = null) {
   pendingDaily = null;
   pendingQuick = quick;
@@ -371,19 +872,35 @@ function gotoVs(quick, opponent = null) {
   const lo = buildLoadout();
   document.getElementById('vs-me').src = carSnapshot(lo, { dir: 1 });
   document.getElementById('vs-them').src = carSnapshot(pendingOpponent.loadout, { dir: -1 });
-  document.getElementById('vs-me-name').textContent = PLAYER_NAME;
-  document.getElementById('vs-me-stats').textContent = statLine(lo);
+  document.getElementById('vs-me-name').textContent = pName();
   document.getElementById('vs-them-name').textContent =
     pendingOpponent.name + (quick ? '' : ` · Étape ${state.stage}`);
-  document.getElementById('vs-them-stats').textContent = statLine(pendingOpponent.loadout, pendingOpponent.statBoost);
+  vsCompare(lo, pendingOpponent);
+  // l'enjeu du combat, visible avant de s'engager
+  const stake = document.getElementById('vs-stake');
+  stake.textContent = quick
+    ? `Entraînement · ~${12 + state.stage * 5} pièces`
+    : `Enjeu : 🏅 médaille + ~${25 + state.stage * 14} pièces${pendingOpponent.boss ? ' · prime de boss +50% !' : ''}`;
   show('screen-vs');
+  vsDrama();
 }
 
 function launchBattle() {
   show('screen-battle');
-  document.getElementById('hud-name-l').textContent = PLAYER_NAME;
+  document.getElementById('hud-name-l').textContent = pName();
   document.getElementById('hud-name-r').textContent = pendingOpponent.name;
   document.getElementById('battle-msg').classList.add('hidden');
+  // annonce du duel façon affiche de boxe
+  battleIntro(pName(), pendingOpponent.name);
+  // premier combat : expliquer que la machine se bat toute seule
+  if (state.totalWins === 0 && !pendingBet) {
+    const toast = document.getElementById('battle-toast');
+    setTimeout(() => {
+      toast.textContent = 'Combat automatique — ta machine se débrouille toute seule. Croise les pattes !';
+      toast.classList.remove('hidden');
+      setTimeout(() => toast.classList.add('hidden'), 3200);
+    }, 2400);
+  }
   startBattle({
     playerLoadout: buildLoadout(),
     playerBoost: prestigeBoost(),
@@ -393,6 +910,17 @@ function launchBattle() {
     mutator: pendingDaily ? pendingDaily.mutator : null,
     onEnd: onBattleEnd,
   });
+}
+
+// Affiche de duel au lancement du combat (par-dessus le compte à rebours).
+let introTimer = 0;
+function battleIntro(left, right) {
+  const el = document.getElementById('battle-intro');
+  document.getElementById('intro-l').textContent = left;
+  document.getElementById('intro-r').textContent = right;
+  el.classList.remove('hidden');
+  clearTimeout(introTimer);
+  introTimer = setTimeout(() => el.classList.add('hidden'), 2100);
 }
 
 // Bannière entre deux combats du Grand Combat.
@@ -428,10 +956,16 @@ function onBattleEnd(result) {
   const leagueEl = document.getElementById('result-league');
   const progressEl = document.getElementById('result-progress');
   const btnNext = document.getElementById('btn-next');
+  const btnOk = document.getElementById('btn-result-ok');
+  const bitsEl = document.getElementById('result-bits');
+  const carEl = document.getElementById('result-car');
+  const rewardsEl = document.getElementById('result-rewards');
   partEl.classList.add('hidden');
   leagueEl.classList.add('hidden');
   progressEl.classList.add('hidden');
   btnNext.classList.add('hidden');
+  bitsEl.innerHTML = '';
+  carEl.classList.add('hidden');
 
   if (result.win) {
     defeatStreak = 0;
@@ -474,39 +1008,31 @@ function onBattleEnd(result) {
     if (r.promoted) sfxPromote(); else { sfxWin(); if (r.medal || dailyPart) sfxMedal(); }
     title.textContent = dailyPart ? 'DÉFI RÉUSSI !' : (r.prestiged ? 'PRESTIGE !' : (r.promoted ? 'PROMU !' : 'VICTOIRE !'));
     title.className = 'result-title win';
-    const bits = [`${beatenName} est K.O. !`];
+    document.getElementById('result-sub').textContent = `${beatenName} est K.O. !`;
+    const bits = [];
     if (dailyPart) bits.push(`Défi « ${pendingDaily.mutator.name} » dans la poche !`);
     if (wasBoss) bits.push(`Boss vaincu : +${bossBonus} pièces bonus !`);
     if (gauntlet && gauntlet.fought > 0) bits.push(`Série du Grand Combat : ${gauntlet.fought + 1} victoires !`);
     if (r.medal) bits.push('Médaille prise !');
-    if (r.prestiged) bits.push(`Championnat terminé ! Retour à l'étape 1 avec +4% de puissance permanente — les adversaires seront bien plus féroces.`);
+    if (r.prestiged) bits.push(`Championnat terminé ! Retour à l'étape 1 avec +4% de puissance permanente.`);
     else if (r.promoted) bits.push(`Bienvenue à l'étape ${state.stage} !`);
-    document.getElementById('result-sub').textContent = bits.join(' ');
-    if (r.prestiged) {
-      leagueEl.textContent = `PRESTIGE ⭐${state.prestige} — LÉGENDE VIVANTE !`;
-      leagueEl.classList.remove('hidden');
-    }
+    if (r.prestiged) leagueEl.textContent = `PRESTIGE ⭐${state.prestige} — LÉGENDE VIVANTE !`;
+    let hasNext = false;
     if (!pendingQuick && !r.promoted) {
       progressEl.textContent = `🏅 ${state.medals.length}/${MEDALS_TO_ADVANCE} médailles vers la promotion`;
-      progressEl.classList.remove('hidden');
       const next = nextUnbeaten();
       if (next) {
         pendingOpponent = next;
         btnNext.textContent = `⚔ Adversaire suivant : ${next.name}`;
-        btnNext.classList.remove('hidden');
         btnNext.dataset.mode = '';
+        hasNext = true;
       }
     }
     const leagueUp = r.leagueUp || (gauntlet && gauntlet.leagueUp);
-    if (leagueUp) {
-      leagueEl.textContent = `NOUVELLE LIGUE : ${leagueUp.name.toUpperCase()} ! +${leagueUp.bonus} pièces`;
-      leagueEl.classList.remove('hidden');
-    }
+    if (leagueUp) leagueEl.textContent = `NOUVELLE LIGUE : ${leagueUp.name.toUpperCase()} ! +${leagueUp.bonus} pièces`;
     const totalCoins = r.coins + bossBonus + (gauntlet ? gauntlet.coins : 0);
-    countUp(document.getElementById('reward-coins'), totalCoins);
     const shown = r.part || (r.extraParts && r.extraParts[0]);
     if (shown) {
-      partEl.classList.remove('hidden');
       document.getElementById('reward-img').src = partThumb(shown);
       const extra = r.extraParts && r.extraParts.length > 1 ? ` (+${r.extraParts.length - (r.part ? 0 : 1)} autres !)` : '';
       // écho de collection : le drop appartient-il à un set ?
@@ -515,9 +1041,30 @@ function onBattleEnd(result) {
       document.getElementById('reward-name').textContent =
         `${partDef(shown).name} ${'★'.repeat(shown.stars)} · niv. ${shown.level}${extra}${setNote}`;
     }
+    // mise en scène : tout arrive en cascade, pas d'un bloc
+    rewardsEl.classList.add('hidden');
+    btnOk.classList.add('hidden');
     document.getElementById('sunburst').classList.remove('hidden');
     show('screen-result');
     confetti();
+    const myCar = carSnapshot(buildLoadout(), { dir: 1, w: 360, h: 200 });
+    const steps = [
+      [280, () => { carEl.src = myCar; carEl.classList.remove('hidden'); }],
+      ...bits.map((b, i) => [520 + i * 260, () => addBit(b)]),
+      [640 + bits.length * 260, () => {
+        rewardsEl.classList.remove('hidden');
+        countUp(document.getElementById('reward-coins'), totalCoins);
+      }],
+    ];
+    let t = 1350 + bits.length * 260;
+    if (shown) { steps.push([t, () => { partEl.classList.remove('hidden'); sfxMedal(); }]); t += 450; }
+    if (leagueEl.textContent && (r.prestiged || leagueUp)) steps.push([t, () => leagueEl.classList.remove('hidden')]);
+    if (!pendingQuick && !r.promoted) steps.push([t, () => progressEl.classList.remove('hidden')]);
+    steps.push([t + 250, () => {
+      btnOk.classList.remove('hidden');
+      if (hasNext) btnNext.classList.remove('hidden');
+    }]);
+    cascade(steps);
   } else {
     defeatStreak++;
     haptic('MEDIUM');
@@ -535,14 +1082,17 @@ function onBattleEnd(result) {
       sub += ' Améliore tes pièces et réessaie !';
     }
     document.getElementById('result-sub').textContent = sub;
+    rewardsEl.classList.remove('hidden');
     document.getElementById('reward-coins').textContent = '+' + coins;
     document.getElementById('sunburst').classList.add('hidden');
+    btnOk.classList.remove('hidden');
     if (!gauntlet) {
       btnNext.textContent = '🔄 Revanche !';
       btnNext.classList.remove('hidden');
       btnNext.dataset.mode = '';
     }
     show('screen-result');
+    cascade([]);
   }
   gauntlet = null;
   pendingDaily = null;
@@ -550,21 +1100,131 @@ function onBattleEnd(result) {
 
 function boot() {
   load();
+  setMuted(!state.settings.sound);
   initGarage();
-  startSplash();
+  runLoading();
 
-  document.getElementById('btn-play').addEventListener('click', () => {
+  // — hub —
+  document.getElementById('hub-fight').addEventListener('click', () => {
+    sfxClick();
+    renderRoster();
+    show('screen-roster');
+  });
+  document.getElementById('hub-garage').addEventListener('click', () => {
     sfxClick();
     renderGarage();
     show('screen-garage');
   });
+  document.getElementById('hub-shop').addEventListener('click', () => {
+    sfxClick();
+    renderShop();
+    show('screen-shop');
+  });
+  document.getElementById('hub-bet').addEventListener('click', () => { sfxClick(); openBets(); });
+  document.getElementById('hub-quick').addEventListener('click', () => { sfxClick(); gauntlet = null; gotoVs(true); });
+  document.getElementById('hub-daily').addEventListener('click', () => { sfxClick(); gotoDaily(); });
+  document.getElementById('btn-garage-back').addEventListener('click', () => { sfxClick(); show('screen-hub'); });
+  document.getElementById('btn-shop-back').addEventListener('click', () => { sfxClick(); show('screen-hub'); });
+
+  // — boutique : fermeture de la caisse —
+  document.getElementById('crate-close').addEventListener('click', () => {
+    sfxClick();
+    document.getElementById('crate-sheet').classList.add('hidden');
+  });
+  document.getElementById('crate-sheet').addEventListener('click', e => {
+    if (e.target.id === 'crate-sheet') document.getElementById('crate-sheet').classList.add('hidden');
+  });
+
+  // — carte du championnat —
+  document.getElementById('btn-season').addEventListener('click', () => {
+    sfxClick();
+    renderSeason();
+    document.getElementById('season-sheet').classList.remove('hidden');
+  });
+  document.getElementById('season-close').addEventListener('click', () => {
+    sfxClick();
+    document.getElementById('season-sheet').classList.add('hidden');
+  });
+  document.getElementById('season-sheet').addEventListener('click', e => {
+    if (e.target.id === 'season-sheet') document.getElementById('season-sheet').classList.add('hidden');
+  });
+
+  // — réglages —
+  document.getElementById('btn-settings').addEventListener('click', () => {
+    sfxClick();
+    renderSettings();
+    document.getElementById('settings-sheet').classList.remove('hidden');
+  });
+  document.getElementById('settings-close').addEventListener('click', () => {
+    sfxClick();
+    document.getElementById('settings-sheet').classList.add('hidden');
+  });
+  document.getElementById('settings-sheet').addEventListener('click', e => {
+    if (e.target.id === 'settings-sheet') document.getElementById('settings-sheet').classList.add('hidden');
+  });
+  document.getElementById('tgl-sound').addEventListener('click', () => {
+    state.settings.sound = !state.settings.sound;
+    setMuted(!state.settings.sound);
+    save();
+    sfxClick(); // silencieux si on vient de couper
+    renderSettings();
+  });
+  document.getElementById('tgl-haptics').addEventListener('click', () => {
+    state.settings.haptics = !state.settings.haptics;
+    save();
+    sfxClick();
+    haptic();
+    renderSettings();
+  });
+  // réinitialisation en deux temps
+  let resetArmed = false, resetTimer = 0;
+  document.getElementById('btn-reset').addEventListener('click', function () {
+    sfxClick();
+    if (!resetArmed) {
+      resetArmed = true;
+      this.textContent = 'Tout effacer ? Confirme !';
+      clearTimeout(resetTimer);
+      resetTimer = setTimeout(() => {
+        resetArmed = false;
+        this.textContent = 'Réinitialiser la progression';
+      }, 3000);
+      return;
+    }
+    try { localStorage.removeItem('maks_save_v1'); } catch (e) {}
+    location.reload();
+  });
+
+  // — profil —
+  document.getElementById('btn-profile').addEventListener('click', () => {
+    sfxClick();
+    renderProfile();
+    document.getElementById('profile-sheet').classList.remove('hidden');
+  });
+  document.getElementById('profile-close').addEventListener('click', () => {
+    sfxClick();
+    document.getElementById('profile-sheet').classList.add('hidden');
+    renderHub();
+  });
+  document.getElementById('profile-sheet').addEventListener('click', e => {
+    if (e.target.id === 'profile-sheet') {
+      document.getElementById('profile-sheet').classList.add('hidden');
+      renderHub();
+    }
+  });
+  document.getElementById('profile-input').addEventListener('change', function () {
+    state.playerName = this.value.trim().slice(0, 12) || 'Toi';
+    this.value = state.playerName;
+    save();
+  });
+
+  // — garage / championnat —
   document.getElementById('btn-fight').addEventListener('click', () => {
     sfxClick();
     renderRoster();
     show('screen-roster');
   });
   document.getElementById('btn-quick').addEventListener('click', () => { sfxClick(); gauntlet = null; gotoVs(true); });
-  document.getElementById('btn-roster-back').addEventListener('click', () => { sfxClick(); renderGarage(); show('screen-garage'); });
+  document.getElementById('btn-roster-back').addEventListener('click', () => { sfxClick(); show('screen-hub'); });
   document.getElementById('btn-gauntlet').addEventListener('click', () => {
     sfxClick();
     const next = nextUnbeaten();
@@ -575,36 +1235,48 @@ function boot() {
   document.getElementById('btn-vs-back').addEventListener('click', () => {
     sfxClick();
     gauntlet = null;
-    if (pendingQuick) { renderGarage(); show('screen-garage'); }
+    if (pendingQuick) show('screen-hub');
     else { renderRoster(); show('screen-roster'); }
   });
   document.getElementById('btn-vs-go').addEventListener('click', () => { sfxClick(); launchBattle(); });
   document.getElementById('btn-result-ok').addEventListener('click', () => {
     sfxClick();
     if (!pendingQuick) { renderRoster(); renderGarage(); show('screen-roster'); }
-    else { renderGarage(); show('screen-garage'); }
+    else show('screen-hub');
   });
   // « Adversaire suivant » / « Revanche » / « Nouveau pari »
   document.getElementById('btn-next').addEventListener('click', function () {
     sfxClick();
     if (this.dataset.mode === 'bet') openBets();
-    else gotoVs(pendingQuick, pendingQuick ? null : pendingOpponent);
+    else gotoVs(pendingQuick, pendingOpponent); // vraie revanche : le MÊME adversaire
   });
   document.getElementById('btn-bet').addEventListener('click', () => { sfxClick(); openBets(); });
   document.getElementById('daily-banner').addEventListener('click', () => { sfxClick(); gotoDaily(); });
-  document.getElementById('btn-bet-back').addEventListener('click', () => { sfxClick(); renderGarage(); show('screen-garage'); });
+  document.getElementById('btn-bet-back').addEventListener('click', () => { sfxClick(); show('screen-hub'); });
   document.getElementById('btn-bet-shuffle').addEventListener('click', () => { sfxClick(); openBets(true); });
   document.getElementById('btn-bet-a').addEventListener('click', () => { sfxClick(); placeBet('a'); });
   document.getElementById('btn-bet-b').addEventListener('click', () => { sfxClick(); placeBet('b'); });
 
-  // halo d'onboarding sur le bouton championnat tant qu'on n'a jamais combattu
-  if (state.totalWins === 0) document.getElementById('btn-fight').classList.add('attention');
-  document.getElementById('btn-fight').addEventListener('click', function once() {
-    this.classList.remove('attention');
-  }, { once: true });
+  // halo d'onboarding sur les boutons de combat tant qu'on n'a jamais combattu
+  if (state.totalWins === 0) {
+    document.getElementById('btn-fight').classList.add('attention');
+    document.getElementById('hub-fight').classList.add('attention');
+  }
+  for (const id of ['btn-fight', 'hub-fight']) {
+    document.getElementById(id).addEventListener('click', function once() {
+      document.getElementById('btn-fight').classList.remove('attention');
+      document.getElementById('hub-fight').classList.remove('attention');
+    }, { once: true });
+  }
 
-  window.addEventListener('touchstart', unlockAudio, { once: true });
-  window.addEventListener('mousedown', unlockAudio, { once: true });
+  const firstGesture = () => {
+    unlockAudio();
+    // la musique ne peut démarrer qu'après un geste (règle iOS)
+    if (!document.getElementById('screen-battle').classList.contains('hidden')) return;
+    startMusic('menu');
+  };
+  window.addEventListener('touchstart', firstGesture, { once: true });
+  window.addEventListener('mousedown', firstGesture, { once: true });
   // batterie/politesse : audio suspendu en arrière-plan + check de mise à jour
   document.addEventListener('visibilitychange', () => {
     handleVisibility();

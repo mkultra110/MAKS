@@ -2,12 +2,12 @@
 import * as THREE from 'three';
 import { buildCarSpec } from './car.js';
 import { copilotMods, activeSets } from './state.js';
-import { COPILOTS, WHEELS, partMult } from './data.js';
+import { COPILOTS, WHEELS, partMult, partDef } from './data.js';
 import { createRenderer, disposeModel, makeBlobShadow, INK } from './render3d.js';
 import { createCarModel, createArena, createDeathWall, skyTexture, addSkyDecor, pulseLaserLens, toonMat, ARENA_THEMES, S } from './models3d.js';
 import {
-  sfxHit, sfxBoom, sfxLaser, sfxShot, sfxCount, sfxGo, sfxSiren, sfxClang,
-  startBattleAudio, stopBattleAudio, setEngineSpeed, crowdExcite,
+  sfxHit, sfxBoom, sfxLaser, sfxShot, sfxRocket, sfxCount, sfxGo, sfxSiren, sfxClang,
+  startBattleAudio, stopBattleAudio, setEngineSpeed, crowdExcite, startMusic, stopMusic,
 } from './sfx.js';
 import { EffectComposer } from './lib/postprocessing/EffectComposer.js';
 import { RenderPass } from './lib/postprocessing/RenderPass.js';
@@ -103,6 +103,15 @@ function makeCar(engine, lo, opts) {
   });
   Composite.add(engine.world, [chassis, ...wheels.map(w => w.body), ...axles]);
 
+  // gadgets passifs du catalogue : pointes, boost d'attaque, blindage réactif
+  let thorns = 0, gadgetDmg = 1, dmgTaken = 1;
+  for (const g of lo.gadgets) {
+    const d = partDef(g);
+    if (d.thorns) thorns += d.thorns;          // dégâts/s renvoyés au contact
+    if (d.dmgBoost) gadgetDmg *= 1 + d.dmgBoost;   // dégâts infligés ×(1+x)
+    if (d.dmgReduce) dmgTaken *= 1 - d.dmgReduce;  // dégâts subis ×(1-x)
+  }
+
   const maxHp = Math.round(spec.stats.hp * statBoost * mods.hp);
   return {
     team, name, dir, spec, chassis, wheels, axles, group,
@@ -110,12 +119,14 @@ function makeCar(engine, lo, opts) {
     hp: maxHp, maxHp,
     heal: spec.stats.heal,
     boost: spec.stats.hasBooster, backpedal: spec.stats.hasBackpedal,
-    dmgMult: dmgBoost ?? statBoost,
+    dmgMult: (dmgBoost ?? statBoost) * gadgetDmg,
+    dmgTaken, thorns,
     hitFlash: 0,
     copilot,
     meleeMult: mods.melee, rangedMult: mods.ranged, speedMult: mods.speed,
     cdMult: 1, frenzyUntil: -1, copilotUsed: false,
     weaponTimers: spec.weapons.map(() => 0),
+    chargeTimers: spec.weapons.map(() => 0),
     meleeLast: spec.weapons.map(() => 0),
     boostTimer: 1.2,
     flipTimer: 0,
@@ -280,6 +291,32 @@ function spawnWord(battle, x2, y2, z, word) {
 }
 
 // ---------- effets : jets de particules (un burst = un THREE.Points) ----------
+// Pool de matériaux réutilisés (clé couleur:taille) : burst() est appelé jusqu'à
+// ~35x/s, créer un PointsMaterial à chaque fois mettait le GC sous pression.
+// L'opacité étant animée par burst, on recycle au lieu de partager.
+const BURST_MAT_POOL = new Map();
+function acquireBurstMat(color, size) {
+  const key = color + ':' + size;
+  const pool = BURST_MAT_POOL.get(key);
+  if (pool && pool.length) {
+    const mtl = pool.pop();
+    mtl.opacity = 1;
+    return mtl;
+  }
+  const mtl = new THREE.PointsMaterial({
+    color, size, transparent: true, opacity: 1,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  mtl.userData.burstKey = key;
+  return mtl;
+}
+function releaseBurstMat(mtl) {
+  let pool = BURST_MAT_POOL.get(mtl.userData.burstKey);
+  if (!pool) BURST_MAT_POOL.set(mtl.userData.burstKey, pool = []);
+  if (pool.length < 16) pool.push(mtl);
+  else mtl.dispose();
+}
+
 function burst(battle, x2, y2, z, n, color, opt = {}) {
   const pos = new Float32Array(n * 3);
   const vel = [];
@@ -292,10 +329,7 @@ function burst(battle, x2, y2, z, n, color, opt = {}) {
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  const mtl = new THREE.PointsMaterial({
-    color, size: opt.size || 0.14, transparent: true, opacity: 1,
-    blending: THREE.AdditiveBlending, depthWrite: false,
-  });
+  const mtl = acquireBurstMat(color, opt.size || 0.14);
   const points = new THREE.Points(geo, mtl);
   battle.scene.add(points);
   battle.bursts.push({ points, vel, life: opt.life || 0.6, maxLife: opt.life || 0.6, grav: opt.grav ?? 7 });
@@ -316,6 +350,26 @@ function flashLight(battle, x2, y2, intensity = 60) {
   battle.flash.intensity = intensity;
 }
 
+// Marque de brûlure persistante au sol : l'arène garde les cicatrices du combat.
+function addScorch(battle, x2) {
+  battle.scorchN = (battle.scorchN || 0) + 1;
+  const mesh = new THREE.Mesh(
+    new THREE.CircleGeometry(0.6 + Math.random() * 0.4, 16),
+    new THREE.MeshBasicMaterial({ color: 0x26183A, transparent: true, opacity: 0.35, depthWrite: false })
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  // léger décalage vertical par marque pour éviter le z-fighting
+  mesh.position.set(to3x(x2), 0.02 + (battle.scorchN % 12) * 0.001, 0);
+  battle.scene.add(mesh);
+  battle.scorch.push({ mesh, life: 10 });
+  if (battle.scorch.length > 12) { // cap : la plus vieille disparaît
+    const old = battle.scorch.shift();
+    battle.scene.remove(old.mesh);
+    old.mesh.geometry.dispose();
+    old.mesh.material.dispose();
+  }
+}
+
 // ---------- combat ----------
 export function startBattle(config) {
   const { playerLoadout, opponent, onEnd, copilot = null, themeIndex = 0, playerBoost = 1, playerDmgBoost = null, mutator = null } = config;
@@ -324,7 +378,7 @@ export function startBattle(config) {
   if (!renderer) renderer = createRenderer(canvas, { antialias: false });
 
   const engine = Engine.create();
-  engine.gravity.y = mutator?.key === 'lowgrav' ? 0.45 : 1;
+  engine.gravity.y = mutator?.key === 'lowgrav' ? 0.45 : (mutator?.key === 'heavy' ? 1.6 : 1);
 
   const ground = Bodies.rectangle(ARENA_W / 2, GROUND_Y + 40, ARENA_W * 3, 80, { isStatic: true, label: 'ground', friction: 0.9 });
   const wallL = Bodies.rectangle(-30, GROUND_Y - 300, 60, 700, { isStatic: true, label: 'wall:L' });
@@ -357,9 +411,9 @@ export function startBattle(config) {
 
   const battle = {
     engine, canvas, cars: [me, foe], ground, wallL, wallR, terrain,
-    projectiles: [], beams: [], bursts: [], waves: [], floaters: [], debris: [], words: [],
+    projectiles: [], beams: [], bursts: [], waves: [], floaters: [], debris: [], words: [], scorch: [],
     time: -3.2, wallsDeadly: false,
-    shake: 0, slowmo: 1, hitStop: 0, acc: 0,
+    shake: 0, slowmo: 1, hitStop: 0, acc: 0, sdt: 0,
     // pipeline caméra : impulsions accumulées, décrues chaque frame
     roll: 0, rollKick: 0, kickX: 0, fovKick: 0, menace: 0,
     focusX: 0, focusT: 0, clashLast: -9, clashCount: 0,
@@ -421,6 +475,7 @@ export function stopBattle() {
   cancelAnimationFrame(current.raf);
   window.removeEventListener('resize', current.onResize);
   stopBattleAudio();
+  stopMusic();
   Events.off(current.engine);
   Composite.clear(current.engine.world, false);
   Engine.clear(current.engine);
@@ -461,9 +516,14 @@ function handleMeleePair(battle, pair) {
         showToast(battle, 'Tigrou enrage ! Dégâts ×1,5');
       }
       const frenzy = battle.time < owner.frenzyUntil ? 1.5 : 1;
-      const dmg = wp.def.dps * wp.mult * MELEE_TICK * owner.dmgMult * owner.meleeMult * frenzy;
+      // dmgMult de l'attaquant appliqué dans applyDamage (centralisé)
+      const dmg = wp.def.dps * wp.mult * MELEE_TICK * owner.meleeMult * frenzy;
       const at = pair.collision.supports[0] || target.chassis.position;
-      applyDamage(battle, target, dmg, at);
+      applyDamage(battle, target, dmg, at, owner);
+      // pointes défensives : l'attaquant se blesse au même tick de contact
+      if (target.thorns) {
+        applyDamage(battle, owner, target.thorns * MELEE_TICK, at);
+      }
       burst(battle, at.x, at.y, target.z, 7, 0xffd060, { speed: 3.6, size: 0.1, life: 0.45 });
       if (wp.def.push) {
         Body.setVelocity(target.chassis, { x: target.chassis.velocity.x + owner.dir * 2.2, y: target.chassis.velocity.y - 0.6 });
@@ -520,7 +580,7 @@ function handleSpikePair(battle, pair) {
     if (battle.time - wheel.contactLast < MELEE_TICK) continue;
     wheel.contactLast = battle.time;
     const at = pair.collision.supports[0] || target.chassis.position;
-    applyDamage(battle, target, wheel.contactDps * MELEE_TICK * owner.dmgMult, at);
+    applyDamage(battle, target, wheel.contactDps * MELEE_TICK, at, owner);
     burst(battle, at.x, at.y, target.z, 4, 0xd8dce8, { speed: 2.6, size: 0.08, life: 0.3 });
     sfxHit();
   }
@@ -539,6 +599,7 @@ function handleProjectilePair(battle, pair) {
       burst(battle, pos.x, pos.y, proj.z, 12, 0xffd060, { speed: 3, size: 0.12, life: 0.5 });
       shockwave(battle, pos.x, pos.y, proj.z);
       flashLight(battle, pos.x, pos.y, 70);
+      addScorch(battle, pos.x); // l'explosion marque le sol
       battle.shake = Math.max(battle.shake, 8);
       hitStop(battle, 0.07, 0.05); // micro-freeze : l'impact se sent
       battle.rollKick += 0.055 * (to3x(pos.x) < battle.camX ? -1 : 1);
@@ -548,13 +609,16 @@ function handleProjectilePair(battle, pair) {
         if (car === proj.owner || car.dead) continue;
         const d = Vector.magnitude(Vector.sub(car.chassis.position, pos));
         if (target === car || d < 110) {
-          applyDamage(battle, car, proj.dmg, pos);
+          applyDamage(battle, car, proj.dmg, pos, proj.owner);
           Body.setVelocity(car.chassis, { x: car.chassis.velocity.x + proj.owner.dir * 1.5, y: car.chassis.velocity.y - 1 });
         }
       }
     } else if (target && target !== proj.owner && !target.dead) {
-      applyDamage(battle, target, proj.dmg, pos);
+      applyDamage(battle, target, proj.dmg, pos, proj.owner);
       burst(battle, pos.x, pos.y, proj.z, 4, 0xffe080, { speed: 2.4, size: 0.09, life: 0.35 });
+      // l'impact de balle se sent : son + onomatopée occasionnelle
+      sfxHit();
+      if (Math.random() < 0.25) spawnWord(battle, pos.x, pos.y - 30, proj.z, 'PAF !');
     }
   }
 }
@@ -568,10 +632,18 @@ function handleWallPair(battle, pair) {
   }
 }
 
-function applyDamage(battle, car, dmg, at) {
+function applyDamage(battle, car, dmg, at, attacker = null) {
   if (car.dead || (battle.finished && battle.endTimer > 0.4)) return;
+  // multiplicateurs : boost de l'attaquant (statBoost, gadgets, mutateurs)
+  // et réduction de la victime (gadget blindage réactif)
+  if (attacker) dmg *= attacker.dmgMult;
+  if (car.dmgTaken != null) dmg *= car.dmgTaken;
   car.hp -= dmg;
   car.hitFlash = 0.14; // flash rouge du véhicule touché
+  // mutateur vampire : l'attaquant récupère 30 % des dégâts infligés
+  if (battle.mutator?.key === 'vampire' && attacker && !attacker.dead) {
+    attacker.hp = Math.min(attacker.maxHp, attacker.hp + dmg * 0.3);
+  }
   // le commentateur s'enflamme au premier sang
   if (!battle.firstBlood) {
     battle.firstBlood = true;
@@ -637,6 +709,8 @@ function spawnDebris(battle, car) {
       life: 2.5,
     });
   }
+  // les 2 matériaux partagés sont libérés avec le dernier débris expiré
+  battle.debris[battle.debris.length - 1].mats = [debrisMat, darkMat];
 }
 
 function killCar(battle, car, cause) {
@@ -661,6 +735,11 @@ function killCar(battle, car, cause) {
   battle.finished = true;
   battle.slowmo = 0.25;
   battle.endTimer = 1.7;
+  addScorch(battle, p.x); // l'épave marque le sol
+  // punch-in caméra : focus sur l'épave + coup de focale inversé (dolly-in)
+  battle.focusX = to3x(p.x);
+  battle.focusT = 1.7;
+  battle.fovKick = -8;
   const playerWon = car.team === 1;
   battle.result = {
     win: playerWon,
@@ -719,6 +798,7 @@ function step(battle, dt, onEnd) {
     showMsg(battle, 'MIAOU !');
     sfxGo();
     startBattleAudio(); // foule + moteurs en continu
+    startMusic('battle');
     if (battle.mutator) showToast(battle, `DÉFI : ${battle.mutator.name.toUpperCase()} !`);
     battle.shake = 6;
     for (const car of cars) {
@@ -781,6 +861,31 @@ function step(battle, dt, onEnd) {
       sfxHit();
     }
     car.prevVy = car.chassis.velocity.y;
+
+    // fumée puis flammes selon les PV : l'état de la machine se lit sans HUD
+    const hpRatio = car.hp / car.maxHp;
+    if (hpRatio < 0.5) {
+      if (!car.scarred) {
+        car.scarred = true; // carrosserie ternie, une seule fois
+        car.model.bodyMat?.color.multiplyScalar(0.85);
+      }
+      const burning = hpRatio < 0.25;
+      car.smokeT = (car.smokeT ?? 0) - dt;
+      if (car.smokeT <= 0) {
+        car.smokeT = burning ? 0.12 : 0.3;
+        const top = worldPoint(car, 0, -car.spec.body.h / 2);
+        burst(battle, top.x, top.y, car.z, 1, burning ? 0xff7030 : 0x555a6e,
+          { speed: 0.6, size: 0.24, life: 0.9, grav: -1.8 });
+      }
+      if (burning) { // étincelles épisodiques sous 25 %
+        car.sparkT = (car.sparkT ?? 0) - dt;
+        if (car.sparkT <= 0) {
+          car.sparkT = 0.4 + Math.random() * 0.2;
+          const top = worldPoint(car, 0, -car.spec.body.h / 2);
+          burst(battle, top.x, top.y, car.z, 3, 0xffd060, { speed: 2.4, size: 0.09, life: 0.4 });
+        }
+      }
+    }
   }
 
   // physique à pas fixe : indépendante du taux de rafraîchissement (60/120 Hz)
@@ -792,7 +897,13 @@ function step(battle, dt, onEnd) {
     battle.acc -= STEP;
     iter++;
   }
-  updateEffects(battle, dt);
+  // les VFX vivent au même temps ralenti que la physique : pendant le slow-mo
+  // de KO et les hit-stops, débris, explosions et onomatopées flottent aussi
+  const sdt = dt * battle.slowmo;
+  battle.sdt = sdt;
+  updateEffects(battle, sdt);
+  // la décrue du shake caméra reste en temps réel (sinon la caméra devient molle)
+  battle.shake = Math.max(0, battle.shake - 60 * dt);
   updateHud(battle, remaining, dt);
   // le moteur ronronne selon la vitesse du joueur, la foule s'excite à la fin
   setEngineSpeed(Math.abs(cars[0].chassis.velocity.x) + Math.abs(cars[1].chassis.velocity.x));
@@ -870,6 +981,8 @@ function updateDrive(battle, car, enemy, dt) {
 }
 
 function updateWeapons(battle, car, enemy, dt) {
+  // mutateur pacifiste : les armes à distance se taisent (la mêlée reste)
+  if (battle.mutator?.key === 'pacifist') return;
   car.spec.weapons.forEach((wp, i) => {
     if (wp.kind === 'melee') return;
     car.weaponTimers[i] -= dt;
@@ -877,22 +990,41 @@ function updateWeapons(battle, car, enemy, dt) {
     const muzzle = worldPoint(car, wp.ox + (wp.w || 20) / 2, wp.oy);
     const target = enemy.chassis.position;
     const dist = Vector.magnitude(Vector.sub(target, muzzle));
-    const dmg = wp.def.dmg * wp.mult * car.dmgMult * car.rangedMult;
+    // dmgMult de l'attaquant appliqué dans applyDamage (centralisé)
+    const dmg = wp.def.dmg * wp.mult * car.rangedMult;
+
+    // feedback au canon : flash de bouche + recul, le tir a du poids
+    const muzzleKick = recoil => {
+      burst(battle, muzzle.x, muzzle.y, car.z, 8, 0xffe080, { speed: 4, size: 0.12, life: 0.18 });
+      flashLight(battle, muzzle.x, muzzle.y, 25);
+      const v = car.chassis.velocity;
+      Body.setVelocity(car.chassis, { x: v.x - car.dir * recoil, y: v.y - recoil * 0.25 });
+      car.squashVel = (car.squashVel ?? 0) - 1.25 * recoil; // -1.5 roquette, -0.5 gun
+    };
 
     if (wp.kind === 'rocket') {
       car.weaponTimers[i] = wp.def.cooldown * car.cdMult;
       fireProjectile(battle, car, muzzle, target, { type: 'rocket', dmg, speed: 15, arc: -3.2, r: 7 });
-      sfxShot();
+      muzzleKick(1.2);
+      sfxRocket();
     } else if (wp.kind === 'gun') {
       if (dist > wp.def.range) { car.weaponTimers[i] = 0.1; return; }
       car.weaponTimers[i] = wp.def.cooldown * car.cdMult;
       fireProjectile(battle, car, muzzle, { x: target.x, y: target.y - 10 + Math.random() * 20 }, { type: 'bullet', dmg, speed: 22, arc: 0, r: 3 });
+      muzzleKick(0.4);
       sfxShot();
     } else if (wp.kind === 'laser') {
-      if (dist > wp.def.range) { car.weaponTimers[i] = 0.15; return; }
+      if (dist > wp.def.range) { car.weaponTimers[i] = 0.15; car.chargeTimers[i] = 0; return; }
+      // télégraphe : 0,2 s de charge visible au canon avant le rayon
+      car.chargeTimers[i] += dt;
+      if (car.chargeTimers[i] < 0.2) {
+        burst(battle, muzzle.x, muzzle.y, car.z, 1, 0x45e8ff, { speed: 1.2, size: 0.09, life: 0.15 });
+        return;
+      }
+      car.chargeTimers[i] = 0;
       car.weaponTimers[i] = wp.def.cooldown * car.cdMult;
       addBeam(battle, muzzle, target, car.z);
-      applyDamage(battle, enemy, dmg, target);
+      applyDamage(battle, enemy, dmg, target, car);
       burst(battle, target.x, target.y, enemy.z, 8, 0x45e8ff, { speed: 3, size: 0.11, life: 0.4 });
       sfxLaser();
     }
@@ -997,7 +1129,7 @@ function updateEffects(battle, dt) {
   // bursts de particules
   for (const b of battle.bursts) {
     b.life -= dt;
-    if (b.life <= 0) { battle.scene.remove(b.points); b.points.geometry.dispose(); b.points.material.dispose(); continue; }
+    if (b.life <= 0) { battle.scene.remove(b.points); b.points.geometry.dispose(); releaseBurstMat(b.points.material); continue; }
     const pos = b.points.geometry.attributes.position;
     for (let i = 0; i < b.vel.length; i++) {
       const v = b.vel[i];
@@ -1050,6 +1182,8 @@ function updateEffects(battle, dt) {
     if (d.life <= 0) {
       battle.scene.remove(d.mesh);
       d.mesh.geometry.dispose();
+      // le porteur des matériaux partagés les libère en expirant
+      if (d.mats) for (const m of d.mats) m.dispose();
       continue;
     }
     d.vel.y -= 12 * dt;
@@ -1085,8 +1219,16 @@ function updateEffects(battle, dt) {
   }
   battle.words = battle.words.filter(w => w.life > 0);
 
+  // marques de brûlure au sol : fondu lent
+  for (const s of battle.scorch) {
+    s.life -= dt;
+    s.mesh.material.opacity = 0.35 * Math.max(0, s.life / 10);
+    if (s.life <= 0) { battle.scene.remove(s.mesh); s.mesh.geometry.dispose(); s.mesh.material.dispose(); }
+  }
+  battle.scorch = battle.scorch.filter(s => s.life > 0);
+
   battle.flash.intensity = Math.max(0, battle.flash.intensity - 350 * dt);
-  battle.shake = Math.max(0, battle.shake - 60 * dt);
+  // (la décrue de battle.shake vit dans step(), en temps réel non ralenti)
 }
 
 // Barres de PV « qui saignent » : chute instantanée + traîne orange, soin lissé.
@@ -1178,16 +1320,20 @@ function syncCar(battle, car, t, dt) {
     car.blob.scale.set(1.6 * k, k, 1);
   }
   // animations quantifiées « on twos » (12 fps) : le détail qui fait dessin animé
+  // early-out : inutile de recalculer entre deux pas de 12 fps (rendu 60-120 Hz)
   const tq = Math.floor(t * 12) / 12;
-  for (const anim of car.model.spins) {
-    for (const s of anim.spin) {
-      if (anim.axis === 'x') s.rotation.x = tq * 20;
-      else s.rotation.z = -tq * 16;
+  if (tq !== car.lastTq) {
+    car.lastTq = tq;
+    for (const anim of car.model.spins) {
+      for (const s of anim.spin) {
+        if (anim.axis === 'x') s.rotation.x = tq * 20;
+        else s.rotation.z = -tq * 16;
+      }
     }
-  }
-  for (const f of car.model.flames) {
-    const k = 0.8 + Math.sin(tq * 31 + car.team) * 0.25;
-    f.scale.set(k, 0.9 + Math.sin(tq * 43) * 0.3, k);
+    for (const f of car.model.flames) {
+      const k = 0.8 + Math.sin(tq * 31 + car.team) * 0.25;
+      f.scale.set(k, 0.9 + Math.sin(tq * 43) * 0.3, k);
+    }
   }
 }
 
@@ -1202,19 +1348,25 @@ function render(battle, t, dt) {
     p.mesh.position.set(to3x(p.body.position.x), to3y(p.body.position.y), p.z);
     p.mesh.rotation.z = -Math.atan2(p.body.velocity.y, p.body.velocity.x);
     if (p.type === 'rocket') {
-      const f = p.mesh.userData.flame;
-      f.scale.setScalar(0.8 + Math.random() * 0.5);
-      // fait glisser la traînée
-      const pos = p.trail.geometry.attributes.position;
-      for (let i = pos.count - 1; i > 0; i--) {
-        pos.array[i * 3] = pos.array[(i - 1) * 3];
-        pos.array[i * 3 + 1] = pos.array[(i - 1) * 3 + 1];
-        pos.array[i * 3 + 2] = pos.array[(i - 1) * 3 + 2];
+      // traînée et flicker au temps ralenti : pendant le slow-mo la roquette
+      // avance moins vite, sa fumée aussi (accumulateur au pas de 60 Hz)
+      p.trailAcc = (p.trailAcc || 0) + (battle.sdt ?? dt);
+      if (p.trailAcc >= 1 / 60) {
+        p.trailAcc = 0;
+        const f = p.mesh.userData.flame;
+        f.scale.setScalar(0.8 + Math.random() * 0.5);
+        // fait glisser la traînée
+        const pos = p.trail.geometry.attributes.position;
+        for (let i = pos.count - 1; i > 0; i--) {
+          pos.array[i * 3] = pos.array[(i - 1) * 3];
+          pos.array[i * 3 + 1] = pos.array[(i - 1) * 3 + 1];
+          pos.array[i * 3 + 2] = pos.array[(i - 1) * 3 + 2];
+        }
+        pos.array[0] = p.mesh.position.x;
+        pos.array[1] = p.mesh.position.y;
+        pos.array[2] = p.mesh.position.z;
+        pos.needsUpdate = true;
       }
-      pos.array[0] = p.mesh.position.x;
-      pos.array[1] = p.mesh.position.y;
-      pos.array[2] = p.mesh.position.z;
-      pos.needsUpdate = true;
     }
   }
   pulseLaserLens(t);
@@ -1243,7 +1395,8 @@ function render(battle, t, dt) {
   const vFov = BASE_FOV * Math.PI / 180;
   const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
   const span = Math.abs(ax - bx) + 3.2;
-  const targetDist = Math.min(Math.max((span / 2) / Math.tan(hFov / 2), 8), 46);
+  let targetDist = Math.min(Math.max((span / 2) / Math.tan(hFov / 2), 8), 46);
+  if (battle.finished) targetDist = Math.min(targetDist, 11); // dolly-in sur l'épave
   battle.camDist += (targetDist - battle.camDist) * Math.min(1, dt * 3.5);
   // 3. menace des murs : contre-plongée progressive à hauteur de capot
   battle.menace += ((battle.wallsDeadly ? 1 : 0) - battle.menace) * Math.min(1, dt / 1.2);
@@ -1289,18 +1442,23 @@ function render(battle, t, dt) {
     wpos.needsUpdate = true;
   }
 
-  // la foule saute et s'agite
+  // la foule saute et s'agite (quantifiée 12 fps : early-out entre deux pas,
+  // sinon les ~130 setMatrixAt + upload tournent pour rien à 60-120 Hz)
   const crowd = battle.env.userData.crowd;
   if (crowd) {
-    for (let i = 0; i < crowd.data.length; i++) {
-      const f = crowd.data[i];
-      const excite = battle.finished ? 2.2 : 1;
-      const tq2 = Math.floor(t * 12) / 12;
-      crowd.dummy.position.set(f.x, f.y + Math.max(0, Math.sin(tq2 * f.speed * excite + f.phase)) * f.amp * excite, f.z);
-      crowd.dummy.updateMatrix();
-      crowd.mesh.setMatrixAt(i, crowd.dummy.matrix);
+    const excite = battle.finished ? 2.2 : 1;
+    const tq2 = Math.floor(t * 12) / 12;
+    if (tq2 !== crowd.lastTq || excite !== crowd.lastExcite) {
+      crowd.lastTq = tq2;
+      crowd.lastExcite = excite;
+      for (let i = 0; i < crowd.data.length; i++) {
+        const f = crowd.data[i];
+        crowd.dummy.position.set(f.x, f.y + Math.max(0, Math.sin(tq2 * f.speed * excite + f.phase)) * f.amp * excite, f.z);
+        crowd.dummy.updateMatrix();
+        crowd.mesh.setMatrixAt(i, crowd.dummy.matrix);
+      }
+      crowd.mesh.instanceMatrix.needsUpdate = true;
     }
-    crowd.mesh.instanceMatrix.needsUpdate = true;
   }
 
   battle.composer.render();
