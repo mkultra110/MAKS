@@ -43,6 +43,18 @@ function show(id) {
   if (id === 'screen-hub') { renderHub(); resumeHub(); } else pauseHub();
   // musique de menu partout sauf en combat (le combat gère la sienne)
   if (id !== 'screen-battle' && id !== 'screen-loading') startMusic('menu');
+  // barre d'onglets : visible sur les 5 écrans principaux
+  const TAB_OF = {
+    'screen-hub': 'tab-hub', 'screen-garage': 'tab-garage', 'screen-roster': 'tab-arena',
+    'screen-shop': 'tab-shop', 'screen-bet': 'tab-bet',
+  };
+  const tabbar = document.getElementById('tabbar');
+  if (tabbar) {
+    const active = TAB_OF[id];
+    tabbar.classList.toggle('hidden', !active);
+    document.getElementById('app').classList.toggle('with-tabs', !!active);
+    if (active) tabbar.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('active', b.id === active));
+  }
   // iris wipe cartoon
   const iris = document.getElementById('iris');
   if (iris) {
@@ -213,17 +225,19 @@ function pokeMascot() {
 function renderHub() {
   document.getElementById('hub-coins').textContent = state.coins;
   document.getElementById('profile-name').textContent = pName();
+  document.getElementById('profile-level').textContent = 'NIV. ' + (1 + Math.floor(state.totalWins / 5));
   document.getElementById('profile-avatar').src = avatarThumb(COPILOTS[state.copilot]?.color ?? 0xffd9a0);
-  document.getElementById('hub-medals').textContent = `🏅${state.medals.length}/${MEDALS_TO_ADVANCE}`;
+  document.getElementById('hub-medals').innerHTML =
+    `<svg class="ic"><use href="#i-medal"/></svg>${state.medals.length}/${MEDALS_TO_ADVANCE}`;
   document.getElementById('hub-fight-label').textContent = `COMBATTRE · Ét. ${state.stage}`;
   const li = leagueIndex(state.stage);
   const stageChip = document.getElementById('hub-stage');
-  stageChip.textContent = `${state.prestige > 0 ? `⭐${state.prestige}·` : ''}Ét. ${state.stage}`;
+  stageChip.textContent = `${state.prestige > 0 ? `★${state.prestige}·` : ''}Ét. ${state.stage}`;
   stageChip.parentElement.querySelector('.ic').style.color = LEAGUES[li].color;
   const valid = loadoutValid(buildLoadout());
   document.getElementById('hub-fight').disabled = !valid;
   document.getElementById('hub-quick').disabled = !valid;
-  document.getElementById('hub-bet').disabled = state.coins < 10;
+  document.getElementById('tab-bet').disabled = state.coins < 10;
   renderDailyBanner();
 }
 
@@ -384,7 +398,7 @@ function renderRoster() {
     if (diff && !beaten) {
       const tag = document.createElement('div');
       tag.className = 'rc-diff ' + diff;
-      tag.textContent = opp.boss ? '👑 BOSS' : (diff === 'easy' ? 'FACILE' : 'COSTAUD');
+      tag.textContent = opp.boss ? 'BOSS' : (diff === 'easy' ? 'FACILE' : 'COSTAUD');
       el.appendChild(tag);
     }
     if (!beaten && opp.idx === nextIdx) {
@@ -414,7 +428,7 @@ function dailyOfToday() {
   const rng = seededRng(seed);
   const mutator = MUTATORS[Math.floor(rng() * MUTATORS.length)];
   const opponent = makeOpponent(state.stage, Math.floor(rng() * ROSTER_SIZE));
-  return { day, mutator, opponent: { ...opponent, name: '🎯 ' + opponent.name, idx: null } };
+  return { day, mutator, opponent: { ...opponent, name: opponent.name, idx: null } };
 }
 
 function renderDailyBanner() {
@@ -429,22 +443,22 @@ function renderDailyBanner() {
       const next = new Date(now);
       next.setHours(24, 0, 0, 0);
       const mins = Math.max(0, Math.floor((next - now) / 60000));
-      el.textContent = `✓ Défi réussi — prochain dans ${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}`;
+      el.innerHTML = `<svg class="ic"><use href="#i-check"/></svg> Défi réussi — prochain dans ${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}`;
     } else {
       const { mutator } = dailyOfToday();
       el.className = 'daily-banner';
-      el.textContent = `🎯 Défi du jour : ${mutator.name} — gagne une pièce 3★ !`;
+      el.innerHTML = `<svg class="ic"><use href="#i-daily"/></svg> Défi du jour : ${mutator.name} — gagne une pièce 3★ !`;
     }
   }
 }
 
 // ---------- Boutique : offre du jour, caisses, peintures, co-pilotes ----------
 const CRATES = [
-  { key: 'bois', name: 'Caisse Bois', emoji: '📦', desc: '2 pièces surprises', price: 120,
+  { key: 'bois', name: 'Caisse Bois', desc: '2 pièces surprises', price: 120,
     roll: rng => [randomPart(rng, state.stage), randomPart(rng, state.stage)] },
-  { key: 'or', name: 'Caisse Or', emoji: '🧰', desc: '3 pièces, dont une 3★ minimum', price: 350,
+  { key: 'or', name: 'Caisse Or', desc: '3 pièces, dont une 3★ minimum', price: 350,
     roll: rng => [randomPart(rng, state.stage, 3), randomPart(rng, state.stage), randomPart(rng, state.stage)] },
-  { key: 'etoile', name: 'Caisse Étoile', emoji: '🌟', desc: '3 pièces 3★+, dont une 4★ minimum', price: 900,
+  { key: 'etoile', name: 'Caisse Étoile', desc: '3 pièces 3★+, dont une 4★ minimum', price: 900,
     roll: rng => [randomPart(rng, state.stage, 4), randomPart(rng, state.stage, 3), randomPart(rng, state.stage, 3)] },
 ];
 const PAINT_PRICE = 60;
@@ -491,15 +505,15 @@ function renderShop() {
   document.getElementById('shop-coins').textContent = state.coins;
   const list = document.getElementById('shop-list');
   list.innerHTML = '';
-  const section = title => {
+  const section = (title, icon) => {
     const h = document.createElement('div');
     h.className = 'shop-section';
-    h.textContent = title;
+    h.innerHTML = (icon ? `<svg class="ic"><use href="#${icon}"/></svg> ` : '') + title;
     list.appendChild(h);
   };
 
   // — offre du jour —
-  section('⏰ Offre du jour');
+  section('Offre du jour', 'i-clock');
   const offer = shopDailyOffer();
   const sold = state.shopDaily === offer.day;
   const oimg = document.createElement('img');
@@ -521,11 +535,11 @@ function renderShop() {
   ));
 
   // — caisses —
-  section('📦 Caisses de pièces');
+  section('Caisses de pièces', 'i-gift');
   for (const cr of CRATES) {
     const em = document.createElement('div');
-    em.className = 'crate-emoji';
-    em.textContent = cr.emoji;
+    em.className = 'crate-emoji tier-' + cr.key;
+    em.innerHTML = '<svg class="ic"><use href="#i-gift"/></svg>';
     list.appendChild(shopCard(
       'crate-' + cr.key, em, cr.name, cr.desc,
       priceBtn(cr.price, state.coins < cr.price, () => {
@@ -542,7 +556,7 @@ function renderShop() {
   }
 
   // — peintures (débloquées pour toutes les machines) —
-  section('🎨 Peintures — pour toutes tes machines');
+  section('Peintures — pour toutes tes machines', 'i-star');
   const pg = document.createElement('div');
   pg.className = 'paint-shop';
   for (const color of PAINTS) {
@@ -574,7 +588,7 @@ function renderShop() {
   const li = leagueIndex(state.stage);
   const lockedCp = Object.entries(COPILOTS).filter(([id, cp]) => li < cp.unlock && !state.copilotsBought.includes(id));
   if (lockedCp.length) {
-    section('🐱 Co-pilotes — déblocage anticipé');
+    section('Co-pilotes — déblocage anticipé', 'i-copilot');
     for (const [id, cp] of lockedCp) {
       const img = document.createElement('img');
       img.src = copilotThumb(id);
@@ -651,7 +665,7 @@ function renderSeason() {
   });
   const prestige = document.createElement('div');
   prestige.className = 'season-league prestige' + (state.prestige > 0 ? ' done' : '');
-  prestige.innerHTML = `<div class="sl-head"><span class="sl-dot"></span><span class="sl-name">⭐ PRESTIGE</span>` +
+  prestige.innerHTML = `<div class="sl-head"><span class="sl-dot"></span><span class="sl-name"><svg class="ic"><use href="#i-star"/></svg> PRESTIGE</span>` +
     `<span class="sl-range">après l'ét. 24</span></div>` +
     `<div class="sl-sub">${state.prestige > 0 ? `Déjà ${state.prestige} prestige${state.prestige > 1 ? 's' : ''} — légende vivante !` : 'Recommence plus fort : +4% de puissance permanente'}</div>`;
   path.appendChild(prestige);
@@ -672,7 +686,7 @@ function renderProfile() {
     ['Étape', state.stage],
     ['Meilleure étape', state.bestStage],
     ['Victoires', state.totalWins],
-    ['Prestige', state.prestige > 0 ? '⭐'.repeat(state.prestige) : '—'],
+    ['Prestige', state.prestige > 0 ? '★'.repeat(state.prestige) : '—'],
     ['Pièces d\'or', state.coins],
     ['Pièces possédées', state.inventory.length],
   ];
@@ -755,7 +769,7 @@ function openBets(fresh = true) {
     wrap.appendChild(msg);
     const go = document.createElement('button');
     go.className = 'btn primary';
-    go.textContent = '⚡ Gagne un combat Rapide !';
+    go.innerHTML = '<svg class="ic"><use href="#i-bolt"/></svg> Gagne un combat Rapide !';
     go.addEventListener('click', () => { sfxClick(); gauntlet = null; gotoVs(true); });
     wrap.appendChild(go);
   } else {
@@ -878,9 +892,9 @@ function gotoVs(quick, opponent = null) {
   vsCompare(lo, pendingOpponent);
   // l'enjeu du combat, visible avant de s'engager
   const stake = document.getElementById('vs-stake');
-  stake.textContent = quick
+  stake.innerHTML = quick
     ? `Entraînement · ~${12 + state.stage * 5} pièces`
-    : `Enjeu : 🏅 médaille + ~${25 + state.stage * 14} pièces${pendingOpponent.boss ? ' · prime de boss +50% !' : ''}`;
+    : `Enjeu : <svg class="ic"><use href="#i-medal"/></svg> médaille + ~${25 + state.stage * 14} pièces${pendingOpponent.boss ? ' · prime de boss +50% !' : ''}`;
   show('screen-vs');
   vsDrama();
 }
@@ -1016,15 +1030,16 @@ function onBattleEnd(result) {
     if (r.medal) bits.push('Médaille prise !');
     if (r.prestiged) bits.push(`Championnat terminé ! Retour à l'étape 1 avec +4% de puissance permanente.`);
     else if (r.promoted) bits.push(`Bienvenue à l'étape ${state.stage} !`);
-    if (r.prestiged) leagueEl.textContent = `PRESTIGE ⭐${state.prestige} — LÉGENDE VIVANTE !`;
+    if (r.prestiged) leagueEl.textContent = `PRESTIGE ★${state.prestige} — LÉGENDE VIVANTE !`;
     let hasNext = false;
     if (!pendingQuick && !r.promoted) {
-      progressEl.textContent = `🏅 ${state.medals.length}/${MEDALS_TO_ADVANCE} médailles vers la promotion`;
+      progressEl.innerHTML = `<svg class="ic"><use href="#i-medal"/></svg> ${state.medals.length}/${MEDALS_TO_ADVANCE} médailles vers la promotion`;
       const next = nextUnbeaten();
       if (next) {
         pendingOpponent = next;
-        btnNext.textContent = `⚔ Adversaire suivant : ${next.name}`;
+        btnNext.innerHTML = `<svg class="ic"><use href="#i-sword"/></svg> Suivant : ${next.name}`;
         btnNext.dataset.mode = '';
+        btnNext.classList.remove('danger');
         hasNext = true;
       }
     }
@@ -1087,7 +1102,8 @@ function onBattleEnd(result) {
     document.getElementById('sunburst').classList.add('hidden');
     btnOk.classList.remove('hidden');
     if (!gauntlet) {
-      btnNext.textContent = '🔄 Revanche !';
+      btnNext.textContent = 'REVANCHE !';
+      btnNext.classList.add('danger');
       btnNext.classList.remove('hidden');
       btnNext.dataset.mode = '';
     }
@@ -1110,18 +1126,14 @@ function boot() {
     renderRoster();
     show('screen-roster');
   });
-  document.getElementById('hub-garage').addEventListener('click', () => {
-    sfxClick();
-    renderGarage();
-    show('screen-garage');
-  });
-  document.getElementById('hub-shop').addEventListener('click', () => {
-    sfxClick();
-    renderShop();
-    show('screen-shop');
-  });
-  document.getElementById('hub-bet').addEventListener('click', () => { sfxClick(); openBets(); });
   document.getElementById('hub-quick').addEventListener('click', () => { sfxClick(); gauntlet = null; gotoVs(true); });
+
+  // — barre d'onglets —
+  document.getElementById('tab-hub').addEventListener('click', () => { sfxClick(); show('screen-hub'); });
+  document.getElementById('tab-garage').addEventListener('click', () => { sfxClick(); renderGarage(); show('screen-garage'); });
+  document.getElementById('tab-arena').addEventListener('click', () => { sfxClick(); renderRoster(); show('screen-roster'); });
+  document.getElementById('tab-shop').addEventListener('click', () => { sfxClick(); renderShop(); show('screen-shop'); });
+  document.getElementById('tab-bet').addEventListener('click', () => { sfxClick(); openBets(); });
   document.getElementById('hub-daily').addEventListener('click', () => { sfxClick(); gotoDaily(); });
   document.getElementById('btn-garage-back').addEventListener('click', () => { sfxClick(); show('screen-hub'); });
   document.getElementById('btn-shop-back').addEventListener('click', () => { sfxClick(); show('screen-hub'); });

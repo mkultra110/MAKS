@@ -74,13 +74,13 @@ export function partStats(part) {
   } else if (part.kind === 'weapon') {
     if (d.kind === 'melee') s.push(['Dégâts/s', Math.round(d.dps * m)]);
     else s.push(['Dégâts', Math.round(d.dmg * m)], ['Cadence', d.cooldown + 's']);
-    s.push(['Coût ⚡', d.energy]);
+    s.push(['Coût énergie', d.energy]);
   } else {
     s.push(['Effet', d.desc]);
     if (d.thorns) s.push(['Dégâts contact', d.thorns + '/s']);
     if (d.dmgBoost) s.push(['Dégâts', '+' + Math.round(d.dmgBoost * 100) + '%']);
     if (d.dmgReduce) s.push(['Dégâts subis', '-' + Math.round(d.dmgReduce * 100) + '%']);
-    s.push(['Coût ⚡', d.energy]);
+    s.push(['Coût énergie', d.energy]);
   }
   return s;
 }

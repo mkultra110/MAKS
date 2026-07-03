@@ -284,7 +284,7 @@ export function makeOpponent(stage, round, quick = false) {
   const lo = { body, wheels, weapons, gadgets };
   const baseName = quick ? pick(rng, CAT_NAMES) : CAT_NAMES[(stage * 3 + round * 5) % CAT_NAMES.length];
   return {
-    name: boss ? `👑 ${baseName} le Champion` : baseName,
+    name: boss ? `${baseName} le Champion` : baseName,
     boss,
     avatar: AVATAR_COLORS[Math.floor(rng() * AVATAR_COLORS.length)],
     idx: quick ? null : round,

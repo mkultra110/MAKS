@@ -195,7 +195,7 @@ function openCopilotSheet() {
     nm.textContent = cp.name;
     info.appendChild(nm);
     // passif et pouvoir actif sur deux lignes distinctes, avec micro-labels
-    for (const [label, cls, txt] of [['PASSIF', 'cp-tag-passive', cp.passive], ['ACTIF ⚡', 'cp-tag-active', cp.active]]) {
+    for (const [label, cls, txt] of [['PASSIF', 'cp-tag-passive', cp.passive], ['ACTIF', 'cp-tag-active', cp.active]]) {
       const line = document.createElement('div');
       line.className = 'cp-desc';
       const tag = document.createElement('span');
@@ -231,7 +231,7 @@ export function renderGarage() {
   document.getElementById('coins').textContent = state.coins;
   const li = leagueIndex(state.stage);
   const chip = document.getElementById('stage-label');
-  const prestige = state.prestige > 0 ? `⭐${state.prestige} · ` : '';
+  const prestige = state.prestige > 0 ? `★${state.prestige} · ` : '';
   chip.textContent = `${prestige}${LEAGUES[li].name} · Ét. ${state.stage}`;
   chip.parentElement.querySelector('.ic').style.color = LEAGUES[li].color;
   document.getElementById('stage-fill').style.width =
@@ -242,10 +242,16 @@ export function renderGarage() {
   document.getElementById('stat-hp').textContent = stats.hp;
   document.getElementById('stat-atk').textContent = stats.atk;
   document.getElementById('stat-energy').textContent = `${stats.used}/${stats.capacity}`;
-  const fill = document.getElementById('energy-fill');
-  fill.style.width = Math.min(100, stats.used / Math.max(1, stats.capacity) * 100) + '%';
+  // énergie en cases segmentées (une par point), façon bible graphique
+  const track = document.querySelector('.energy-track');
   const over = stats.used > stats.capacity;
-  fill.classList.toggle('over', over);
+  track.innerHTML = '';
+  const total = Math.max(stats.capacity, stats.used, 1);
+  for (let i = 0; i < total; i++) {
+    const seg = document.createElement('div');
+    seg.className = 'eseg' + (i < stats.used ? (i >= stats.capacity ? ' over' : ' on') : '');
+    track.appendChild(seg);
+  }
   const warning = document.getElementById('energy-warning');
   const valid = loadoutValid(lo);
   if (over) {
@@ -264,6 +270,13 @@ export function renderGarage() {
 
   refreshPreviewModel(lo);
   startPreview();
+  // petit nom de la machine, façon écurie de course
+  const MACHINE_NAMES = {
+    classic: 'Le Matou Turbo', titan: 'Le Gros Costaud', surfer: 'La Planche Filante',
+    whale: 'La Baleine Blindée', pony: 'Le Poney Fou',
+  };
+  const nameEl = document.getElementById('machine-name');
+  if (nameEl) nameEl.textContent = lo.body ? (MACHINE_NAMES[lo.body.type] || 'La Machine') : '';
   renderSlots(lo);
   renderSets(lo);
   renderInventory();
@@ -280,7 +293,7 @@ function renderSets(lo) {
     if (s.count < 2) continue;
     const chip = document.createElement('div');
     chip.className = 'set-chip' + (s.active ? ' set-active' : '');
-    chip.textContent = `⚙ ${s.name} ${Math.min(s.count, s.need)}/${s.need}`;
+    chip.textContent = `${s.name} ${Math.min(s.count, s.need)}/${s.need}`;
     chip.title = s.desc;
     row.appendChild(chip);
   }

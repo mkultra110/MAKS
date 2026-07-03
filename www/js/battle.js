@@ -247,15 +247,24 @@ function buildScene(battle, themeIndex = 0) {
 
 // ---------- onomatopées cartoon : mots sur étoile-explosion ----------
 const WORD_TEX = {};
+// Couleurs par onomatopée (bible graphique) : étoile teintée + texte contrasté.
+const WORD_STYLE = {
+  'BAM !': ['#FFB800', '#26183A'],
+  'KRAK !!': ['#FF4D5E', '#FFF6E0'],
+  'CLANG !': ['#49C4F0', '#26183A'],
+  'BOOM !': ['#A66CFF', '#FFF6E0'],
+  'PAF !': ['#2FD573', '#26183A'],
+};
 function wordTexture(word) {
   if (WORD_TEX[word]) return WORD_TEX[word];
+  const [starFill, txtFill] = WORD_STYLE[word] || ['#FFB800', '#26183A'];
   const c = document.createElement('canvas');
   c.width = 320; c.height = 220;
   const x = c.getContext('2d');
   x.translate(160, 110);
   x.rotate(-0.09);
   // étoile-explosion 12 branches
-  x.fillStyle = '#FFB800';
+  x.fillStyle = starFill;
   x.strokeStyle = '#26183A';
   x.lineWidth = 7;
   x.beginPath();
@@ -271,7 +280,7 @@ function wordTexture(word) {
   x.textAlign = 'center'; x.textBaseline = 'middle';
   x.strokeStyle = '#26183A'; x.lineWidth = 10; x.lineJoin = 'round';
   x.strokeText(word, 0, 2);
-  x.fillStyle = '#FFFFFF';
+  x.fillStyle = txtFill;
   x.fillText(word, 0, 2);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
