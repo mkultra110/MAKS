@@ -151,7 +151,7 @@ function buildScene(battle, themeIndex = 0) {
   const theme = ARENA_THEMES[Math.min(themeIndex, ARENA_THEMES.length - 1)];
   const scene = new THREE.Scene();
   scene.background = skyTexture(theme);
-  scene.fog = new THREE.Fog(theme.fog, 30, 90);
+  scene.fog = new THREE.Fog(theme.fog, 33.5, 56);
 
   // éclairage cartoon : une ambiance + un soleil, les aplats font le reste
   scene.add(new THREE.AmbientLight(0xffffff, 0.55));
@@ -319,12 +319,15 @@ function buildScene(battle, themeIndex = 0) {
   battle.scene = scene;
   battle.camera = camera;
   // départ large : le dolly-in pendant le compte à rebours sert d'intro
-  battle.camX = 0; battle.camDist = 30;
+  battle.camX = 0; battle.camDist = 30; battle.camLookY = 4.5;
+  battle.baseFov = 42; battle.tanV = Math.tan(21 * Math.PI / 180); battle.tanH = battle.tanV * 0.46;
 
   // post-processing : bloom léger (lasers, phares, explosions, néons)
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.35, 0.5, 0.92);
+  // seuil 1.02 : au-dessus de tout ce qui n'est pas HDR — seuls les phares, lasers,
+  // flashs et bursts additifs bloomant vraiment (le crème #FFF6E0 vaut 0.926 de luma)
+  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.80, 0.7, 1.02);
   composer.addPass(bloom);
   const output = new OutputPass();
   composer.addPass(output);
@@ -378,10 +381,20 @@ function wordTexture(word) {
 }
 
 function spawnWord(battle, x2, y2, z, word) {
+  // soustractif : jamais deux onomatopées coup sur coup, jamais plus de 2 à l'écran,
+  // et toujours décalées HORS des machines — le duel doit rester visible
+  if (battle.time - (battle.wordLast ?? -9) < 0.45) return;
+  battle.wordLast = battle.time;
+  while (battle.words.length >= 2) {
+    const old = battle.words.shift();
+    battle.scene.remove(old.sprite);
+    old.sprite.material.dispose();
+  }
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
     map: wordTexture(word), transparent: true, depthWrite: false,
   }));
-  sprite.position.set(to3x(x2), to3y(y2) + 0.6, z + 1.2);
+  const side = to3x(x2) < battle.camX ? -1 : 1;
+  sprite.position.set(to3x(x2) + side * 1.0, to3y(y2) + 1.5, z + 1.2);
   sprite.scale.setScalar(0.001);
   battle.scene.add(sprite);
   battle.words.push({ sprite, life: 0.55, maxLife: 0.55 });
@@ -512,7 +525,7 @@ export function startBattle(config) {
     time: -3.2, wallsDeadly: false,
     shake: 0, slowmo: 1, hitStop: 0, acc: 0, sdt: 0,
     // pipeline caméra : impulsions accumulées, décrues chaque frame
-    roll: 0, rollKick: 0, kickX: 0, fovKick: 0, menace: 0,
+    roll: 0, rollKick: 0, kickX: 0, fovKick: 0, menace: 0, shakeAng: 0,
     focusX: 0, focusT: 0, clashLast: -9, clashCount: 0,
     ghostL: 100, ghostR: 100, ghostHoldL: 0, ghostHoldR: 0,
     finished: false, raf: 0, lastMsg: '',
@@ -747,12 +760,26 @@ function applyDamage(battle, car, dmg, at, attacker = null) {
     showToast(battle, 'PREMIER SANG !');
   }
   const crit = dmg >= 25;
-  battle.floaters.push({
-    x: at.x + (Math.random() - 0.5) * 20, y: at.y - 30, z: car.z,
-    vy: -90, life: 0.85, text: '-' + Math.max(1, Math.round(dmg)),
-    scale: crit ? 2.4 : 1.7, // pope puis se stabilise
-    color: crit ? '#FFB800' : '#FF4D5E',
-  });
+  // un SEUL chiffre par machine qui cumule : deux tics de mêlée ne font pas deux nombres
+  const prev = car.dmgFloater;
+  if (prev && prev.life > 0 && battle.time - prev.born < 0.30) {
+    prev.amount += dmg;
+    const tot = Math.max(1, Math.round(prev.amount));
+    prev.text = '-' + tot;
+    prev.scale = Math.max(prev.scale, tot >= 25 ? 2.4 : 1.7);
+    prev.color = tot >= 25 ? '#FFB800' : '#FF4D5E';
+    prev.life = Math.max(prev.life, 0.7);
+  } else {
+    const f = {
+      x: at.x + (Math.random() - 0.5) * 20, y: at.y - 30, z: car.z,
+      vy: -90, life: 0.85, text: '-' + Math.max(1, Math.round(dmg)),
+      scale: crit ? 2.4 : 1.7, // pope puis se stabilise
+      color: crit ? '#FFB800' : '#FF4D5E',
+      amount: dmg, born: battle.time,
+    };
+    battle.floaters.push(f);
+    car.dmgFloater = f;
+  }
   if (crit) {
     shockwave(battle, at.x, at.y, car.z, 0xffd23e);
     spawnWord(battle, at.x, at.y - 40, car.z, 'BAM !');
@@ -850,6 +877,7 @@ function killCar(battle, car, cause) {
 }
 
 function showToast(battle, text) {
+  battle.wordLast = battle.time + 0.3; // toast et onomatopée ne tombent jamais ensemble
   const el = document.getElementById('battle-toast');
   el.textContent = text;
   el.classList.remove('hidden');
@@ -1306,9 +1334,9 @@ function updateEffects(battle, dt) {
   for (const w of battle.words) {
     w.life -= dt;
     const age = w.maxLife - w.life;
-    let s = age < 0.09 ? (age / 0.09) * 1.45 : (age < 0.22 ? 1.45 - (age - 0.09) * 2.6 : 1.1);
+    let s = age < 0.09 ? (age / 0.09) * 1.25 : (age < 0.22 ? 1.25 - (age - 0.09) * 2.2 : 0.95);
     s = Math.max(0.001, Math.round(s * 8) / 8); // quantifie l'anim (12 fps feel)
-    w.sprite.scale.set(3.2 * s, 2.2 * s, 1);
+    w.sprite.scale.set(2.0 * s, 1.4 * s, 1);
     if (w.life <= 0) {
       battle.scene.remove(w.sprite);
       w.sprite.material.dispose();
@@ -1367,10 +1395,19 @@ function resize(battle) {
   const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
   renderer.setPixelRatio(dpr);
   renderer.setSize(w, h, false);
+  // le composer capture le pixelRatio à sa construction (2.0) : sans ça il rend
+  // 1,78x plus de fragments que le canvas n'en affiche
+  battle.composer.setPixelRatio(dpr);
   battle.composer.setSize(w, h);
   // le bloom travaille en demi-résolution : suffisant et 4x moins cher
   battle.bloomPass.setSize(w * dpr / 2, h * dpr / 2);
-  battle.camera.aspect = w / h;
+  // focale pilotée par l'aspect : en portrait on ouvre pour cadrer le duel
+  const DEG = Math.PI / 180, aspect = w / h;
+  battle.camera.aspect = aspect;
+  battle.baseFov = Math.min(54, Math.max(42, 2 * Math.atan(Math.tan(13 * DEG) / aspect) / DEG));
+  battle.tanV = Math.tan(battle.baseFov * DEG / 2);
+  battle.tanH = battle.tanV * aspect;
+  battle.camera.fov = battle.baseFov;
   battle.camera.updateProjectionMatrix();
   battle.overlay.width = w * dpr;
   battle.overlay.height = h * dpr;
@@ -1484,44 +1521,62 @@ function render(battle, t, dt) {
   const ax = to3x(a.chassis.position.x), bx = to3x(b.chassis.position.x);
   const midX = (ax + bx) / 2;
   // 1. cible de focus : « dernier souffle » prioritaire sur le milieu du duel
+  const ay = to3y(a.chassis.position.y), by = to3y(b.chassis.position.y);
   battle.focusT = Math.max(0, battle.focusT - dt);
-  const tx = battle.focusT > 0 ? battle.focusX : midX;
+  // le focus BIAISE le cadre, il ne l'écrase pas : on ne perd jamais l'autre machine
+  const bias = battle.finished ? 0.75 : 0.5;
+  const tx = battle.focusT > 0 ? midX + (battle.focusX - midX) * bias : midX;
   battle.camX += (tx - battle.camX) * Math.min(1, dt * (battle.focusT > 0 ? 8 : 5));
-  // 2. cadrage : FOV de BASE constant (le punch de focale ne doit pas boucler dedans)
-  const BASE_FOV = 42;
-  const vFov = BASE_FOV * Math.PI / 180;
-  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
-  const span = Math.abs(ax - bx) + 3.2;
-  let targetDist = Math.min(Math.max((span / 2) / Math.tan(hFov / 2), 8), 46);
-  if (battle.finished) targetDist = Math.min(targetDist, 11); // dolly-in sur l'épave
-  battle.camDist += (targetDist - battle.camDist) * Math.min(1, dt * 3.5);
+  // 2. cadrage sur la BOÎTE ENGLOBANTE réelle des deux machines (armes comprises)
+  const left = Math.min(ax - a.model.radX, bx - b.model.radX);
+  const right = Math.max(ax + a.model.radX, bx + b.model.radX);
+  const bot = Math.min(ay - a.model.radY, by - b.model.radY);
+  const top = Math.max(ay + a.model.radY, by + b.model.radY);
+  const halfW = Math.max(right - battle.camX, battle.camX - left) + 1.3;
+  const needH = (top - bot) + 4.0;
+  const visW = Math.min(19, Math.max(9.5, Math.max(2 * halfW, needH * camera.aspect)));
+  let targetDist = Math.min(44, Math.max(11, (visW / 2) / battle.tanH));
+  // plan large sur l'explosion avant le dolly-in sur l'épave
+  if (battle.finished && battle.endTimer < 1.35) targetDist = Math.min(targetDist, 15);
+  // on s'ouvre vite, on se resserre lentement : une machine catapultée reste dans le cadre
+  const kz = targetDist > battle.camDist ? 6 : 2.5;
+  battle.camDist += (targetDist - battle.camDist) * Math.min(1, dt * kz);
   // 3. menace des murs : contre-plongée progressive à hauteur de capot
   battle.menace += ((battle.wallsDeadly ? 1 : 0) - battle.menace) * Math.min(1, dt / 1.2);
-  const baseY = 2.0 + battle.camDist * 0.13;
-  const camY = baseY + (1.15 - baseY) * battle.menace;
-  const baseLookY = 0.85 + battle.camDist * 0.075;
-  const lookY = baseLookY + (1.7 - baseLookY) * battle.menace;
+  // l'action est verrouillée à 63% de la hauteur d'image, l'horizon ne bouge JAMAIS
+  const tv = battle.camDist * battle.tanV;
+  const actY = (top + bot) / 2;
+  const lookT = Math.min(0.68 * tv, Math.max(0.20 * tv, actY + 0.15 * tv));
+  battle.camLookY += (lookT - battle.camLookY) * Math.min(1, dt * 6);
+  const pitch = (2 - 8 * battle.menace) * Math.PI / 180;
+  const camY = battle.camLookY + battle.camDist * Math.tan(pitch);
   // 4. position = base + dérive vivante + kick des coups + shake
-  const shk = battle.shake * 0.012;
+  // amplitudes proportionnelles à la distance : un impact reste aussi fort à l'écran
+  // quel que soit le zoom ; le shake est une oscillation ORIENTÉE, pas du bruit blanc
+  const shk = battle.shake * 0.0009 * battle.camDist;
+  const osc = Math.sin(t * 58) * shk;
+  const sax = Math.cos(battle.shakeAng), say = Math.sin(battle.shakeAng);
+  const drift = Math.sin(t * 0.4) * 0.018 * battle.camDist;
   camera.position.set(
-    battle.camX + Math.sin(t * 0.4) * 0.35 + battle.kickX + (Math.random() - 0.5) * shk,
-    camY + (Math.random() - 0.5) * shk,
+    battle.camX + drift + battle.kickX * (battle.camDist / 12) + sax * osc,
+    camY + say * osc * 0.8,
     battle.camDist
   );
-  camera.lookAt(battle.camX + Math.sin(t * 0.27) * 0.2, lookY, 0);
+  camera.lookAt(battle.camX + Math.sin(t * 0.27) * 0.01 * battle.camDist, battle.camLookY, 0);
   // 5. APRÈS lookAt : roll (dutch angle) + punch de focale, avec retour au calme
   battle.roll += (battle.rollKick - battle.roll) * Math.min(1, dt * 10);
   battle.rollKick *= Math.exp(-dt * 4);
   camera.rotation.z += battle.roll;
   battle.kickX *= Math.exp(-14 * dt);
   battle.fovKick *= Math.exp(-dt * 7);
-  if (Math.abs(camera.fov - (BASE_FOV + battle.fovKick)) > 0.05) {
-    camera.fov = BASE_FOV + battle.fovKick;
+  const fovNow = battle.baseFov * (1 + battle.fovKick / 42);
+  if (Math.abs(camera.fov - fovNow) > 0.05) {
+    camera.fov = fovNow;
     camera.updateProjectionMatrix();
   }
   // le brouillard suit la caméra pour ne jamais noyer les combattants
-  battle.scene.fog.near = battle.camDist + 9;
-  battle.scene.fog.far = battle.camDist + 85;
+  battle.scene.fog.near = battle.camDist + 3.5;
+  battle.scene.fog.far = battle.camDist + 26;
 
   // météo d'ambiance (braises/neige/néons), volume enroulé autour de la caméra
   const weather = battle.env.userData.weather;

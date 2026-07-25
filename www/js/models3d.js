@@ -879,7 +879,22 @@ export function createCarModel(spec, { shadows = true } = {}) {
   // ombre cartoon
   const blob = makeBlobShadow(bw * 0.42);
 
-  root.userData = { spec, bodyGroup, wheelMeshes, spins, flames, bodyMat, blob };
+  // Demi-encombrement RÉEL (corps + roues + armes) : le cadrage de combat en dépend.
+  let radX = spec.body.w / 2, radY = spec.body.h / 2;
+  for (const w of spec.wheels) {
+    radX = Math.max(radX, Math.abs(w.ox) + w.r);
+    radY = Math.max(radY, w.oy + w.r);
+  }
+  for (const wp of spec.weapons) {
+    const ext = wp.shape === 'circle' ? wp.r : Math.max(wp.w, wp.h) / 2;
+    radX = Math.max(radX, Math.abs(wp.ox) + ext);
+    radY = Math.max(radY, Math.abs(wp.oy) + ext);
+  }
+
+  root.userData = {
+    spec, bodyGroup, wheelMeshes, spins, flames, bodyMat, blob, glow,
+    radX: radX * S, radY: radY * S,
+  };
   return root;
 }
 
