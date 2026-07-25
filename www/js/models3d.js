@@ -1,9 +1,11 @@
-// Modèles 3D procéduraux : véhicules, pièces, arène, effets.
-// DA « SAMEDI MATIN » : cel-shading, aplats saturés, encre #26183A.
+// Modèles 3D : véhicules, pièces, arène, effets.
+// DA « ATELIER OUVERT » — les 4 règles sont écrites en tête de render3d.js.
+// Ici s'appliquent surtout la 2 (arènes lavées, cf. ARENA_THEMES), la 3
+// (contour d'encre réservé aux machines) et la 4 (TIER_MATS).
 import * as THREE from 'three';
 import { partDef, COPILOTS } from './data.js';
 import { toonGradient, outlineForGroup, makeBlobShadow, INK } from './render3d.js';
-import { cloneFitted, cloneAsset, hasAsset, assetInfo, assetClips } from './assets.js';
+import { cloneFitted, cloneAsset, hasAsset, assetInfo, assetClips, tierAtlas } from './assets.js';
 
 export const S = 0.02; // 50 px physiques = 1 unité 3D
 
@@ -42,8 +44,9 @@ export function kerbTexture(repeatX = 8) {
   const c = document.createElement('canvas');
   c.width = 128; c.height = 32;
   const x = c.getContext('2d');
-  x.fillStyle = '#FF4D5E'; x.fillRect(0, 0, 64, 32);
-  x.fillStyle = '#FFF6E0'; x.fillRect(64, 0, 64, 32);
+  // vibreur lavé : il borde la piste, il ne doit pas rivaliser avec les machines
+  x.fillStyle = '#C08187'; x.fillRect(0, 0, 64, 32);
+  x.fillStyle = '#EFE7DA'; x.fillRect(64, 0, 64, 32);
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping;
   tex.repeat.set(key, 1);
@@ -657,6 +660,158 @@ function wheelModel(w) {
   return g;
 }
 
+// ---------- AUTOCOLLANTS : la seule couche cosmétique du jeu ----------
+// Dessinés au canvas, posés en decal sur les flancs. Ils n'écrasent jamais la
+// couleur du palier : c'est tout l'intérêt de les avoir mis là plutôt que sur
+// la carrosserie.
+const STICKER_TEX = {};
+export function stickerTexture(id) {
+  if (STICKER_TEX[id]) return STICKER_TEX[id];
+  const c = document.createElement('canvas');
+  c.width = c.height = 192;
+  const x = c.getContext('2d');
+  const C = 96;
+  x.translate(C, C);
+  const ink = '#1C1410';
+  const draw = {
+    eclair: () => {
+      x.fillStyle = '#FFC400';
+      x.beginPath();
+      x.moveTo(14, -70); x.lineTo(-40, 6); x.lineTo(-6, 6); x.lineTo(-18, 70);
+      x.lineTo(42, -12); x.lineTo(6, -12);
+      x.closePath(); x.fill(); x.stroke();
+    },
+    crane: () => {
+      x.fillStyle = '#F7E9D2';
+      x.beginPath(); x.ellipse(0, -12, 48, 42, 0, 0, 7); x.fill(); x.stroke();
+      x.beginPath(); x.moveTo(-26, 22); x.lineTo(26, 22); x.lineTo(18, 60); x.lineTo(-18, 60); x.closePath();
+      x.fill(); x.stroke();
+      x.fillStyle = ink;
+      x.beginPath(); x.ellipse(-19, -16, 13, 15, 0, 0, 7); x.fill();
+      x.beginPath(); x.ellipse(19, -16, 13, 15, 0, 0, 7); x.fill();
+      // oreilles de chat : c'est un crâne de chat, pas un jolly roger
+      x.fillStyle = '#F7E9D2';
+      for (const sx of [-1, 1]) {
+        x.beginPath();
+        x.moveTo(sx * 22, -44); x.lineTo(sx * 46, -78); x.lineTo(sx * 48, -34);
+        x.closePath(); x.fill(); x.stroke();
+      }
+    },
+    flamme: () => {
+      x.fillStyle = '#FF5A2B';
+      x.beginPath();
+      x.moveTo(0, -74);
+      x.bezierCurveTo(36, -30, 46, 6, 24, 40);
+      x.bezierCurveTo(12, 58, -18, 60, -30, 38);
+      x.bezierCurveTo(-46, 10, -30, -22, -6, -44);
+      x.bezierCurveTo(-14, -18, 0, -14, 0, -74);
+      x.fill(); x.stroke();
+      x.fillStyle = '#FFC400';
+      x.beginPath();
+      x.moveTo(2, -28); x.bezierCurveTo(20, -4, 20, 22, 2, 36);
+      x.bezierCurveTo(-16, 22, -16, -4, 2, -28);
+      x.fill();
+    },
+    patte: () => {
+      x.fillStyle = '#F7E9D2';
+      x.beginPath(); x.ellipse(0, 22, 40, 32, 0, 0, 7); x.fill(); x.stroke();
+      for (const [px, py, r] of [[-38, -20, 16], [-13, -40, 17], [15, -40, 17], [39, -19, 16]]) {
+        x.beginPath(); x.ellipse(px, py, r, r * 1.15, 0, 0, 7); x.fill(); x.stroke();
+      }
+    },
+    damier: () => {
+      x.fillStyle = '#F7E9D2';
+      x.fillRect(-70, -46, 140, 92);
+      x.fillStyle = ink;
+      for (let iy = 0; iy < 4; iy++) {
+        for (let ix = 0; ix < 6; ix++) {
+          if ((ix + iy) % 2) x.fillRect(-70 + ix * 23.3, -46 + iy * 23, 23.3, 23);
+        }
+      }
+      x.strokeRect(-70, -46, 140, 92);
+    },
+    cible: () => {
+      const rings = [[62, '#E8402C'], [46, '#F7E9D2'], [30, '#E8402C'], [14, '#F7E9D2']];
+      for (const [r, col] of rings) {
+        x.fillStyle = col;
+        x.beginPath(); x.arc(0, 0, r, 0, 7); x.fill(); x.stroke();
+      }
+    },
+    couronne: () => {
+      x.fillStyle = '#F2B02E';
+      x.beginPath();
+      x.moveTo(-64, 40); x.lineTo(-52, -46); x.lineTo(-20, -8); x.lineTo(0, -58);
+      x.lineTo(20, -8); x.lineTo(52, -46); x.lineTo(64, 40);
+      x.closePath(); x.fill(); x.stroke();
+      x.fillStyle = ink;
+      x.fillRect(-64, 40, 128, 14);
+    },
+    engrenage: () => {
+      x.fillStyle = '#8C9099';
+      x.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a0 = (i / 10) * Math.PI * 2;
+        const a1 = a0 + Math.PI / 10;
+        x.lineTo(Math.cos(a0) * 68, Math.sin(a0) * 68);
+        x.lineTo(Math.cos(a0 + 0.14) * 68, Math.sin(a0 + 0.14) * 68);
+        x.lineTo(Math.cos(a1) * 48, Math.sin(a1) * 48);
+        x.lineTo(Math.cos(a1 + 0.18) * 48, Math.sin(a1 + 0.18) * 48);
+      }
+      x.closePath(); x.fill(); x.stroke();
+      x.globalCompositeOperation = 'destination-out';
+      x.beginPath(); x.arc(0, 0, 22, 0, 7); x.fill();
+      x.globalCompositeOperation = 'source-over';
+    },
+    etoile: () => {
+      x.fillStyle = '#FFC400';
+      x.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+        const r = i % 2 ? 30 : 70;
+        x.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      x.closePath(); x.fill(); x.stroke();
+    },
+    boulon: () => {
+      x.fillStyle = '#E8402C';
+      x.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        x.lineTo(Math.cos(a) * 66, Math.sin(a) * 66);
+      }
+      x.closePath(); x.fill(); x.stroke();
+      x.fillStyle = '#F7E9D2';
+      x.beginPath(); x.arc(0, 0, 26, 0, 7); x.fill(); x.stroke();
+    },
+  };
+  x.strokeStyle = ink;
+  x.lineWidth = 9;
+  x.lineJoin = 'round';
+  (draw[id] || draw.etoile)();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.userData.shared = true;
+  STICKER_TEX[id] = tex;
+  return tex;
+}
+
+// ---------- PALIERS DE MATIÈRE (règle 4 de la DA) ----------
+// La couleur d'une machine ne dit qu'UNE chose : sa puissance. Un joueur doit
+// pouvoir estimer un adversaire d'un coup d'œil, avant même de lire un chiffre.
+// C'est pour cela que la boutique ne vend pas de peinture : elle vend des
+// autocollants, qui n'écrasent jamais cette lecture.
+export const TIER_MATS = [
+  { stars: 1, name: 'Bois',      color: 0xC97F2E, accent: 0x8A5218, ui: '#D08A3C' },
+  { stars: 2, name: 'Acier',     color: 0x3F84DB, accent: 0x21497E, ui: '#4E93E8' },
+  { stars: 3, name: 'Militaire', color: 0x8FA82C, accent: 0x4E5C14, ui: '#9DB63A' },
+  { stars: 4, name: 'Or',        color: 0xFFC01F, accent: 0xB07A00, ui: '#FFC93E' },
+  { stars: 5, name: 'Carbone',   color: 0x3A3B45, accent: 0xFF3B2F, ui: '#FF4A38' },
+];
+export function tierOf(stars) {
+  return TIER_MATS[Math.min(TIER_MATS.length, Math.max(1, stars || 1)) - 1];
+}
+
+// Repli quand l'atlas Kenney manque : les mêmes teintes, en aplat.
 const BODY_COLORS = {
   classic: 0x2f8fff, titan: 0x8c4dff, surfer: 0x21c96b, whale: 0xff8a1e, pony: 0xff5c9e,
 };
@@ -669,8 +824,9 @@ export function createCarModel(spec, { shadows = true } = {}) {
   root.add(bodyGroup);
   const bw = spec.body.w * S, bh = spec.body.h * S;
   const depth = Math.max(1.0, bh * 1.15);
-  const paint = spec.loadout?.body?.paint;
-  const color = paint ? new THREE.Color(paint) : (BODY_COLORS[spec.loadout?.body?.type] ?? 0x8899aa);
+  const tier = tierOf(spec.loadout?.body?.stars);
+  const color = new THREE.Color(tier.color);
+  const sticker = spec.loadout?.body?.sticker;
 
   // CARROSSERIE : modèle 3D d'artiste (Kenney, CC0) calé sur les dimensions
   // physiques du jeu ; repli sur la géométrie procédurale s'il manque.
@@ -685,19 +841,25 @@ export function createCarModel(spec, { shadows = true } = {}) {
       if (o.name && (/^wheel/i.test(o.name) || o.name === 'character')) strip.push(o);
     });
     for (const o of strip) o.parent?.remove(o);
-    // matériaux propres à CETTE machine : le flash de dégâts et la peinture
-    // ne doivent pas déteindre sur les autres véhicules
+    // matériaux propres à CETTE machine : le flash de dégâts ne doit pas
+    // déteindre sur les autres véhicules
+    const atlas = tierAtlas(tier.color); // atlas repeint aux couleurs du palier
     const seen = new Map();
     glbBody.traverse(o => {
       if (!o.isMesh || !o.material) return;
       let m = seen.get(o.material.uuid);
-      if (!m) { m = o.material.clone(); m.userData.shared = false; seen.set(o.material.uuid, m); }
+      if (!m) {
+        m = o.material.clone();
+        m.userData.shared = false;
+        if (atlas) m.map = atlas; // ← le palier repeint la machine, pas le joueur
+        seen.set(o.material.uuid, m);
+      }
       o.material = m;
       if (!bodyMat) bodyMat = m;
       chassis = chassis || o;
     });
-    // teinte de peinture : on module l'atlas au lieu de l'écraser
-    if (paint && bodyMat) for (const m of seen.values()) m.color.lerp(new THREE.Color(paint), 0.75);
+    // repli si l'atlas manque : au moins la teinte du palier passe par le multiply
+    if (!atlas) for (const m of seen.values()) m.color.lerp(color, 0.7);
     glbBody.position.y = -bh * 0.42; // le modèle est posé sur son sol, on le recentre
     bodyGroup.add(glbBody);
     bodyGroup.userData.roofY = -bh * 0.42 + (glbBody.userData.fitSize?.y || bh);
@@ -710,6 +872,23 @@ export function createCarModel(spec, { shadows = true } = {}) {
     plate.position.y = -bh / 2 + bh * 0.08;
     bodyGroup.add(plate);
   }
+  // AUTOCOLLANT sur les deux flancs : la seule marque personnelle du joueur
+  if (sticker) {
+    const sz = Math.min(bw * 0.42, bh * 0.62);
+    for (const sz2 of [1, -1]) {
+      const decal = new THREE.Mesh(
+        new THREE.PlaneGeometry(sz, sz),
+        new THREE.MeshBasicMaterial({ map: stickerTexture(sticker), transparent: true, depthWrite: false })
+      );
+      decal.position.set(bw * 0.06, -bh * 0.02, sz2 * (depth / 2 + 0.02));
+      if (sz2 < 0) decal.rotation.y = Math.PI;
+      decal.userData.noShadow = true;
+      decal.userData.noOutline = true;
+      decal.renderOrder = 2;
+      bodyGroup.add(decal);
+    }
+  }
+
   // néon sous châssis (vend l'arène nocturne)
   const glow = new THREE.Mesh(
     new THREE.PlaneGeometry(bw * 0.8, depth * 0.9),
@@ -1159,13 +1338,24 @@ function groundTexture(color = '#2b2b50') {
 }
 
 // Ambiances d'arène : une par ligue (Bois → Légende).
+//
+// RÈGLE FONDATRICE — le décor RECULE, le jouable AVANCE.
+// Ces teintes ont été lavées volontairement : saturation bornée à ~0,30 sur la
+// bande haute et clarté remontée au-dessus de 0,60. Les machines, elles, gardent
+// leur saturation pleine (cf. TIER_MATS). C'est cet écart de saturation — et non
+// un contour ou une lumière — qui dit au joueur où regarder. Toute retouche qui
+// resature un ciel ou un sol casse la lisibilité du combat : ne pas y toucher
+// sans remesurer (cible : fond S ≤ 0,30 · sujet S ≥ 0,50).
+// Chaque ligue garde son identité par la TEINTE et la CLARTÉ, jamais par la
+// saturation : Bois = jour clair, Bronze = fin de journée, Argent = ciel couvert,
+// Or = heure dorée, Diamant = crépuscule froid, Légende = brume chaude.
 export const ARENA_THEMES = [
-  { name: 'Bois',    sky: ['#59C7F2', '#8FDCF7', '#C9F0FF'], sun: true,  ground: 0x3fbf63, track: 0x4a4460, build: 0x2e86c0, fog: 0xc9f0ff, stars: false, weather: null },
-  { name: 'Bronze',  sky: ['#FF7847', '#FFB35C', '#FFE08A'], sun: true,  ground: 0xc97a3e, track: 0x5a4050, build: 0x8a4a5a, fog: 0xffe08a, stars: false, weather: { type: 'embers', color: 0xff8a40 } },
-  { name: 'Argent',  sky: ['#7FB8E8', '#BFE8FF', '#EAF8FF'], sun: false, ground: 0xdfeef8, track: 0x5a6a80, build: 0x9fc4e0, fog: 0xeaf8ff, stars: false, weather: { type: 'snow', color: 0xffffff } },
-  { name: 'Or',      sky: ['#E8A02E', '#FFC95C', '#FFEBAD'], sun: true,  ground: 0xd9b45c, track: 0x6a5a40, build: 0xb08030, fog: 0xffebad, stars: false, weather: { type: 'dust', color: 0xffd88a } },
-  { name: 'Diamant', sky: ['#1E2260', '#33409A', '#4A6ACF'], sun: false, ground: 0x2a3a7a, track: 0x3a4a90, build: 0x1a2050, fog: 0x4a6acf, stars: true,  weather: { type: 'neon', color: 0x45e8ff } },
-  { name: 'Légende', sky: ['#B2202E', '#E84040', '#FF8A5C'], sun: false, ground: 0x7a2a30, track: 0x4a2028, build: 0x5a1a20, fog: 0xff8a5c, stars: false, weather: { type: 'embers', color: 0xff4030 } },
+  { name: 'Bois',    sky: ['#9FC7D6', '#C3DEE8', '#E4F2F7'], sun: true,  ground: 0x94ac8e, track: 0x8b939c, build: 0xb8cddb, fog: 0xe4f2f7, stars: false, weather: null },
+  { name: 'Bronze',  sky: ['#D1AC9F', '#E3D3C1', '#F2EDDF'], sun: true,  ground: 0xa8977f, track: 0x8d8481, build: 0xd4b4bc, fog: 0xf2eddf, stars: false, weather: { type: 'embers', color: 0xff8a40 } },
+  { name: 'Argent',  sky: ['#ABC5DB', '#CEE2ED', '#EBF5FA'], sun: false, ground: 0xaebac2, track: 0x8d949c, build: 0xcadae6, fog: 0xebf5fa, stars: false, weather: { type: 'snow', color: 0xffffff } },
+  { name: 'Or',      sky: ['#E0C8A2', '#F0E1C5', '#FAF4E3'], sun: true,  ground: 0xbdae8c, track: 0x968f83, build: 0xdecfb6, fog: 0xfaf4e3, stars: false, weather: { type: 'dust', color: 0xffd88a } },
+  { name: 'Diamant', sky: ['#7679A8', '#9FA4C7', '#CACFE0'], sun: false, ground: 0x6e7488, track: 0x5e6270, build: 0x9296b2, fog: 0xcacfe0, stars: true,  weather: { type: 'neon', color: 0x45e8ff } },
+  { name: 'Légende', sky: ['#B27D82', '#D1A9A9', '#E6D7D1'], sun: false, ground: 0x94797a, track: 0x776a6b, build: 0xbd9da0, fog: 0xe6d7d1, stars: false, weather: { type: 'embers', color: 0xff4030 } },
 ];
 
 export function skyTexture(theme = ARENA_THEMES[0]) {
@@ -1200,15 +1390,18 @@ function cloudTexture() {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 160;
   const x = c.getContext('2d');
-  x.strokeStyle = '#26183A'; x.lineWidth = 7; x.fillStyle = '#ffffff';
+  // PAS de contour d'encre : le trait est réservé aux objets JOUABLES.
+  // Un nuage cerné de noir vaut visuellement une machine — c'est exactement
+  // la confusion jouable/non-jouable qu'on cherche à supprimer.
+  x.fillStyle = '#F2ECE4';
   x.beginPath();
   x.arc(70, 100, 38, Math.PI * 0.5, Math.PI * 1.5);
   x.arc(105, 70, 42, Math.PI * 0.95, Math.PI * 1.9);
   x.arc(160, 62, 40, Math.PI * 1.15, Math.PI * 2.05);
   x.arc(195, 100, 34, Math.PI * 1.5, Math.PI * 0.5);
   x.closePath();
-  x.fill(); x.stroke();
-  x.fillStyle = '#CFE9F5';
+  x.fill();
+  x.fillStyle = '#DFD6CB';
   x.fillRect(48, 118, 168, 14);
   CLOUD_TEX = new THREE.CanvasTexture(c);
   CLOUD_TEX.colorSpace = THREE.SRGBColorSpace;
@@ -1221,7 +1414,8 @@ function sunTexture() {
   c.width = c.height = 256;
   const x = c.getContext('2d');
   x.translate(128, 128);
-  x.strokeStyle = '#26183A'; x.lineWidth = 8; x.fillStyle = '#FFD84D';
+  // même règle que les nuages : aucun trait d'encre sur le ciel
+  x.strokeStyle = 'rgba(255,246,224,.75)'; x.lineWidth = 7; x.fillStyle = '#FFF3CE';
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2;
     x.beginPath();
@@ -1229,7 +1423,7 @@ function sunTexture() {
     x.lineTo(Math.cos(a) * 112, Math.sin(a) * 112);
     x.stroke();
   }
-  x.beginPath(); x.arc(0, 0, 66, 0, Math.PI * 2); x.fill(); x.stroke();
+  x.beginPath(); x.arc(0, 0, 66, 0, Math.PI * 2); x.fill();
   SUN_TEX = new THREE.CanvasTexture(c);
   SUN_TEX.colorSpace = THREE.SRGBColorSpace;
   SUN_TEX.userData.shared = true;
@@ -1242,7 +1436,7 @@ function birdTexture() {
   const c = document.createElement('canvas');
   c.width = 192; c.height = 96;
   const x = c.getContext('2d');
-  x.strokeStyle = '#26183A';
+  x.strokeStyle = 'rgba(90,84,96,.55)'; // décor : trait estompé, jamais l'encre du jouable
   x.lineWidth = 6;
   x.lineCap = 'round';
   for (const [bx, by] of [[30, 40], [95, 25], [150, 55]]) {
@@ -1260,9 +1454,11 @@ function birdTexture() {
 
 // Ajoute soleil + nuages (+ options basses altitudes / oiseaux) à une scène.
 export function addSkyDecor(scene, theme = ARENA_THEMES[0], { sunPos = [14, 16, -42], lowClouds = false, birds = false } = {}) {
-  const mk = (tex, w, h) => new THREE.Mesh(
+  // opacity < 1 : le ciel est du décor, il ne doit jamais rivaliser de netteté
+  // ni de contraste avec les machines (règle fondatrice, cf. ARENA_THEMES)
+  const mk = (tex, w, h, opacity = 0.55) => new THREE.Mesh(
     new THREE.PlaneGeometry(w, h),
-    new THREE.MeshBasicMaterial({ map: tex, transparent: true, fog: false, depthWrite: false })
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity, fog: false, depthWrite: false })
   );
   if (theme.sun) {
     const sun = mk(sunTexture(), 9, 9);
@@ -1282,6 +1478,135 @@ export function addSkyDecor(scene, theme = ARENA_THEMES[0], { sunPos = [14, 16, 
     const flock = mk(birdTexture(), 3.4, 1.7);
     flock.position.set(4.5, 10.2, -28);
     scene.add(flock);
+  }
+}
+
+// Voiles de brume : trois plans translucides couleur `theme.fog` intercalés
+// ENTRE la piste et le décor. Tout ce qui est derrière (panneaux, tribunes,
+// foule, skyline, grande roue) se lave progressivement ; les machines, qui
+// jouent devant à z ≈ 0, gardent leur saturation intacte.
+// C'est la perspective atmosphérique de CATS obtenue en 3 draw calls, sans
+// post-process ni clonage de matériaux — donc gratuite sur iPhone.
+function addHaze(env, theme, W) {
+  const fog = theme.fog;
+  for (const [z, opacity] of [[-5.6, 0.10], [-13.0, 0.14], [-25.0, 0.20]]) {
+    const veil = new THREE.Mesh(
+      new THREE.PlaneGeometry(W * 3.2, 46),
+      new THREE.MeshBasicMaterial({
+        color: fog, transparent: true, opacity,
+        depthWrite: false, fog: false, side: THREE.DoubleSide,
+      })
+    );
+    veil.position.set(0, 14, z);
+    veil.renderOrder = -1; // toujours sous les effets de combat
+    env.add(veil);
+  }
+}
+
+// ---------- PREMIER PLAN FLOU ----------
+// Trois masses posées AUX BORDS DU CADRE, hors focus. C'est le meilleur rapport
+// effort/impact de tout le dossier : ça donne une profondeur de champ et ça
+// ferme la composition sans un seul post-process.
+// Le flou est CUIT dans la texture (ctx.filter), donc coût GPU nul, et les props
+// sont enfants de la CAMÉRA : quel que soit le zoom du combat, ils restent
+// exactement là où on les a cadrés.
+const FG_TEX = {};
+function foregroundTexture(kind) {
+  if (FG_TEX[kind]) return FG_TEX[kind];
+  const c = document.createElement('canvas');
+  // la rambarde traverse tout le cadre : elle a besoin de résolution horizontale
+  c.width = kind === 'rambarde' ? 512 : 256;
+  c.height = 256;
+  const x = c.getContext('2d');
+  x.filter = 'blur(10px)'; // hors focus : la seule chose qui compte ici
+  // Ces masses sont les objets les plus PROCHES : donc les plus SOMBRES.
+  // Sombre au premier plan → clair au fond → sombre au premier plan : c'est ce
+  // sandwich de valeurs qui enferme le regard sur les machines.
+  const draw = {
+    pneus: () => {
+      for (let i = 0; i < 3; i++) {
+        x.fillStyle = ['#26221C', '#1F1C17', '#191713'][i];
+        x.beginPath(); x.ellipse(128 + (i % 2 ? 12 : -10), 224 - i * 56, 104, 36, 0, 0, 7); x.fill();
+        x.fillStyle = 'rgba(0,0,0,.55)';
+        x.beginPath(); x.ellipse(128 + (i % 2 ? 12 : -10), 224 - i * 56, 42, 15, 0, 0, 7); x.fill();
+      }
+    },
+    bidons: () => {
+      x.fillStyle = '#2C3A2E';
+      x.fillRect(20, 78, 100, 178);
+      x.fillStyle = '#24302A';
+      x.fillRect(124, 118, 90, 138);
+      x.fillStyle = 'rgba(190,210,180,.10)';
+      x.fillRect(30, 88, 20, 158);
+      x.fillStyle = '#1B241E';
+      x.fillRect(14, 68, 112, 18);
+      x.fillRect(118, 108, 102, 16);
+    },
+    rambarde: () => {
+      x.filter = 'blur(5px)'; // moins de flou : à cette taille, 10px devenait une bouillie
+      x.fillStyle = '#2C2823';
+      x.fillRect(0, 74, 512, 26);
+      x.fillRect(0, 128, 512, 34);
+      for (let i = 0; i < 11; i++) {
+        x.fillStyle = '#241F1B';
+        x.fillRect(10 + i * 46, 66, 16, 190);
+      }
+      x.fillStyle = 'rgba(255,240,214,.12)';
+      x.fillRect(0, 74, 512, 5);
+      x.fillStyle = 'rgba(255,240,214,.07)';
+      x.fillRect(0, 128, 512, 4);
+    },
+  };
+  (draw[kind] || draw.pneus)();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.userData.shared = true;
+  FG_TEX[kind] = tex;
+  return tex;
+}
+
+// Position en FRACTION du cadre, pas en unités monde : en portrait le champ
+// horizontal est deux fois plus étroit qu'en paysage, et des valeurs figées
+// envoyaient les props hors de l'écran.
+// [type, x/demi-largeur, y/demi-hauteur, taille/demi-largeur, profondeur]
+// [type, x/demi-largeur, y/demi-hauteur, largeur/demi-largeur, hauteur/demi-hauteur, profondeur]
+const FG_LAYOUT = [
+  ['rambarde', 0.00, -0.93, 2.40, 0.34, -2.4],
+  ['pneus',   -0.92, -0.72, 1.60, 0.74, -3.2],
+  ['bidons',   0.98, -0.66, 1.50, 0.69, -3.4],
+];
+
+// `camera` doit être dans le graphe de la scène pour que ses enfants soient rendus.
+export function addForegroundProps(scene, camera) {
+  if (camera.parent !== scene) scene.add(camera);
+  const props = [];
+  for (const spec of FG_LAYOUT) {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({
+        map: foregroundTexture(spec[0]), transparent: true, opacity: 0.96,
+        depthWrite: false, depthTest: false, fog: false,
+      })
+    );
+    m.renderOrder = 30; // toujours par-dessus : ils sont devant tout le reste
+    m.userData.noOutline = true;
+    m.userData.fg = spec;
+    camera.add(m);
+    props.push(m);
+  }
+  layoutForegroundProps(props, camera);
+  return props;
+}
+
+// À rappeler à chaque redimensionnement : c'est l'aspect qui décide du cadrage.
+export function layoutForegroundProps(props, camera) {
+  if (!props) return;
+  for (const m of props) {
+    const [, fx, fy, fw, fh, pz] = m.userData.fg;
+    const halfH = Math.abs(pz) * Math.tan(camera.fov * Math.PI / 360);
+    const halfW = halfH * camera.aspect;
+    m.scale.set(halfW * fw, halfH * fh, 1);
+    m.position.set(halfW * fx, halfH * fy, pz);
   }
 }
 
@@ -1310,9 +1635,9 @@ export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {
   track.receiveShadow = true;
   env.add(track);
   // VIBREURS rouge/crème le long de la piste + jupe d'encre
-  const lineMat = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0xEDE6DA });
   const kerbMat = new THREE.MeshBasicMaterial({ map: kerbTexture(Math.round(W / 0.9)) });
-  const kerbSkirt = new THREE.MeshBasicMaterial({ color: 0x26183A });
+  const kerbSkirt = new THREE.MeshBasicMaterial({ color: 0x6E6862 });
   for (const dz of [-3.1, 3.1]) {
     const kerb = new THREE.Mesh(new THREE.BoxGeometry(W, 0.16, 0.55), kerbMat);
     kerb.position.set(0, 0.08, dz);
@@ -1327,7 +1652,7 @@ export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {
   const gx = gridC.getContext('2d');
   for (let gy = 0; gy < 16; gy++) {
     for (let gxx = 0; gxx < 4; gxx++) {
-      gx.fillStyle = (gy + gxx) % 2 ? '#26183A' : '#FFF6E0';
+      gx.fillStyle = (gy + gxx) % 2 ? '#75706A' : '#EDE6DA';
       gx.fillRect(gxx * 32, gy * 32, 32, 32);
     }
   }
@@ -1348,7 +1673,7 @@ export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {
   }
   // traces de gomme
   const skidGeo = new THREE.PlaneGeometry(2.4, 0.34);
-  const skidMat = new THREE.MeshBasicMaterial({ color: 0x26183A, transparent: true, opacity: 0.16, depthWrite: false });
+  const skidMat = new THREE.MeshBasicMaterial({ color: 0x4A443E, transparent: true, opacity: 0.13, depthWrite: false });
   const skidX = [-6, -2.5, 0.8, 3.4, 6.5], skidZ = [-1.2, 0.8, -0.4, 1.4, 0.2];
   for (let i = 0; i < 5; i++) {
     const skid = new THREE.Mesh(skidGeo, skidMat);
@@ -1361,19 +1686,21 @@ export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {
   // logo MAKS décalé (le centre est pris par la grille de départ)
   const logo = new THREE.Mesh(
     new THREE.CircleGeometry(2.2, 40),
-    new THREE.MeshBasicMaterial({ map: bannerTexture('MAKS', 'rgba(0,0,0,0)', 'rgba(255,201,62,.28)'), transparent: true })
+    new THREE.MeshBasicMaterial({ map: bannerTexture('MAKS', 'rgba(0,0,0,0)', 'rgba(120,112,102,.22)'), transparent: true })
   );
   logo.rotation.x = -Math.PI / 2;
   logo.position.set(-W / 4, 0.012, 0);
   env.add(logo);
 
   // panneaux publicitaires le long de la piste
+  // Teintes LAVÉES : ces panneaux sont du décor. Les resaturer remettrait le
+  // fond au-dessus des machines (cf. règle 2 de la DA).
   const ADS = [
-    ['MIAOU-COLA', '#FF4D5E', '#FFF6E0'],
-    ['MAKS ARENA', '#FFB800', '#26183A'],
-    ['GRIFFE & FILS', '#2FD573', '#26183A'],
-    ['CAT-TURBO', '#FFF6E0', '#26183A'],
-    ['RONRON GP', '#49C4F0', '#26183A'],
+    ['MIAOU-COLA', '#C88E93', '#F2ECE2'],
+    ['MAKS ARENA', '#D2B677', '#4A4038'],
+    ['GRIFFE & FILS', '#8FBFA0', '#3E4A42'],
+    ['CAT-TURBO', '#E8E2D6', '#5A544C'],
+    ['RONRON GP', '#9EBECC', '#3E4850'],
   ];
   if (!GEO_CACHE['adleg']) {
     GEO_CACHE['adleg'] = new THREE.CylinderGeometry(0.07, 0.09, 0.8, 6);
@@ -1392,18 +1719,18 @@ export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {
     panel.rotation.z = (i % 2 ? 1 : -1) * 0.02;
     adGroup.add(panel);
     for (const lx of [-2.2, 2.2]) {
-      const leg = new THREE.Mesh(GEO_CACHE['adleg'], toonMat(0x26183A));
+      const leg = new THREE.Mesh(GEO_CACHE['adleg'], toonMat(0x6B6560));
       leg.position.set(lx, 0.35, -0.05);
       adGroup.add(leg);
     }
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.12, 0.3), toonMat(0x26183A));
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.12, 0.3), toonMat(0x6B6560));
     cap.position.set(0, 1.68, 0);
     adGroup.add(cap);
     env.add(adGroup);
   }
 
   // tribunes bicolores + nez de marche crème + garde-corps soleil
-  const standMatA = toonMat(0xA66CFF), standMatB = toonMat(0x8452D9);
+  const standMatA = toonMat(0xA9A2B0), standMatB = toonMat(0x938C9C);
   for (let tier = 0; tier < 3; tier++) {
     const stand = new THREE.Mesh(new THREE.BoxGeometry(W + 14, 1.1, 2.2), tier % 2 ? standMatB : standMatA);
     stand.position.set(0, 1.5 + tier * 1.15, -8.4 - tier * 2.1);
@@ -1412,10 +1739,10 @@ export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {
     nose.position.set(0, 1.5 + tier * 1.15 + 0.63, -8.4 - tier * 2.1);
     env.add(nose);
   }
-  const rail = new THREE.Mesh(new THREE.BoxGeometry(W + 14, 0.45, 0.14), toonMat(0xFFB800));
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(W + 14, 0.45, 0.14), toonMat(0xC9B47A));
   rail.position.set(0, 1.35, -7.25);
   env.add(rail);
-  const railTop = new THREE.Mesh(new THREE.BoxGeometry(W + 14, 0.08, 0.16), new THREE.MeshBasicMaterial({ color: 0x26183A }));
+  const railTop = new THREE.Mesh(new THREE.BoxGeometry(W + 14, 0.08, 0.16), new THREE.MeshBasicMaterial({ color: 0x7A736C }));
   railTop.position.set(0, 1.60, -7.25);
   env.add(railTop);
   // foule : silhouettes-quilles à oreilles, en rangs, couleurs palette
@@ -1430,7 +1757,7 @@ export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {
   const dummy = new THREE.Object3D();
   let cSeed = 13;
   const crnd = () => { cSeed = (cSeed * 16807) % 2147483647; return cSeed / 2147483647; };
-  const FAN_COLORS = [0xFF4D5E, 0x2FD573, 0xFFB800, 0x49C4F0, 0xFF7AB8, 0xFFF6E0, 0xA66CFF];
+  const FAN_COLORS = [0xC79398, 0x93BFA2, 0xD2BC85, 0x9CBAC8, 0xC9A2B6, 0xE4DED2, 0xA79EBA];
   for (let i = 0; i < N_FANS; i++) {
     const tier = i % 3;
     const slot = Math.floor(i / 3);
@@ -1447,7 +1774,7 @@ export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {
   env.add(crowd);
   env.userData.crowd = { mesh: crowd, data: fanData, dummy };
   // pancartes de supporters
-  const SIGNS = [['GO !', '#2FD573', '#26183A'], ['MIAOU', '#FF7AB8', '#26183A'], ['POW', '#FF4D5E', '#FFF6E0']];
+  const SIGNS = [['GO !', '#9CC7AA', '#4A544C'], ['MIAOU', '#CDA8BC', '#4A424A'], ['POW', '#C99398', '#F2ECE2']];
   const SIGN_POS = [[-7.5, 2.9, -8.0], [-2.6, 4.05, -10.1], [1.8, 2.9, -8.0], [5.4, 5.2, -12.2], [8.8, 4.05, -10.1]];
   for (let i = 0; i < 5; i++) {
     const [txt, bg, fg] = SIGNS[i % 3];
@@ -1472,8 +1799,8 @@ export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {
       const bwPx = 70 + srnd() * 80;
       const bhPx = 90 + srnd() * 140;
       x.fillStyle = tint;
-      x.strokeStyle = '#26183A';
-      x.lineWidth = 6;
+      x.strokeStyle = 'rgba(80,76,88,.45)'; // décor : jamais l'encre du jouable
+      x.lineWidth = 5;
       x.fillRect(bx, 256 - bhPx, bwPx, bhPx);
       x.strokeRect(bx, 256 - bhPx, bwPx, bhPx);
       // toits variés : créneaux / antenne / château d'eau
@@ -1490,7 +1817,7 @@ export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {
       const cols = 3 + (i % 2);
       for (let cx2 = 0; cx2 < cols; cx2++) {
         for (let cy2 = 0; cy2 < Math.floor((bhPx - 24) / 30); cy2++) {
-          x.fillStyle = srnd() < 0.65 ? '#FFD84D' : '#26183A';
+          x.fillStyle = srnd() < 0.65 ? 'rgba(255,244,214,.65)' : 'rgba(92,88,100,.5)';
           x.fillRect(bx + 10 + cx2 * ((bwPx - 20) / cols), 256 - bhPx + 12 + cy2 * 30, 14, 18);
         }
       }
@@ -1509,7 +1836,7 @@ export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {
   env.add(farPlane);
   const nearPlane = new THREE.Mesh(
     new THREE.PlaneGeometry(W * 2.4, 12),
-    new THREE.MeshBasicMaterial({ map: skylineTexture('#' + new THREE.Color(theme.build).getHexString(), 29), transparent: true })
+    new THREE.MeshBasicMaterial({ map: skylineTexture('#' + new THREE.Color(theme.build).lerp(new THREE.Color(theme.fog), 0.18).getHexString(), 29), transparent: true })
   );
   nearPlane.position.set(0, 6, -24);
   env.add(nearPlane);
@@ -1519,9 +1846,9 @@ export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {
   ferrisPivot.position.set(W / 2 + 7, 4.2, -19);
   env.add(ferrisPivot);
   const ferris = new THREE.Group();
-  ferris.add(new THREE.Mesh(new THREE.TorusGeometry(3.0, 0.14, 8, 28), toonMat(0xFFB800)));
+  ferris.add(new THREE.Mesh(new THREE.TorusGeometry(3.0, 0.14, 8, 28), toonMat(0xC9B47A)));
   const rayGeo = new THREE.BoxGeometry(0.1, 3.0, 0.1);
-  const rayMat = toonMat(0xFFB800);
+  const rayMat = toonMat(0xC9B47A);
   for (let i = 0; i < 8; i++) {
     const a = i * Math.PI / 4;
     const ray = new THREE.Mesh(rayGeo, rayMat);
@@ -1583,6 +1910,38 @@ export function createArena(scene, arenaW, theme = ARENA_THEMES[0]) {
     lamp.lookAt(0, 0, 0);
     env.add(lamp);
   }
+
+  // RAMBARDE CÔTÉ CAMÉRA — le bas du cadre était une bande de sol vide.
+  // Un vrai objet posé à z = +5,2 vaut mieux qu'un flou : il donne une échelle,
+  // il ferme la composition, et il est coupé par le bord bas comme dans une
+  // photo prise depuis la fosse.
+  const railColor = new THREE.Color(theme.ground).lerp(new THREE.Color(0x2A2620), 0.72).getHex();
+  const nearRail = new THREE.Group();
+  const postGeo = new THREE.BoxGeometry(0.16, 0.92, 0.16);
+  const postMat = toonMat(railColor);
+  for (let px = -W / 2 - 4; px <= W / 2 + 4; px += 2.6) {
+    const post = new THREE.Mesh(postGeo, postMat);
+    post.position.set(px, 0.46, 5.2);
+    nearRail.add(post);
+  }
+  for (const [ry, rh] of [[0.86, 0.13], [0.5, 0.10]]) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(W + 12, rh, 0.1), postMat);
+    bar.position.set(0, ry, 5.2);
+    nearRail.add(bar);
+  }
+  // piles de pneus dans la fosse : de la matière au premier plan, pas du vide
+  const stackGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.3, 12);
+  const stackMat = toonMat(0x22201C);
+  for (const sx of [-W / 2 + 2.5, -3.4, 4.8, W / 2 - 2.2]) {
+    for (let k = 0; k < 3; k++) {
+      const t = new THREE.Mesh(stackGeo, stackMat);
+      t.position.set(sx + (k % 2 ? 0.06 : -0.06), 0.15 + k * 0.3, 6.0);
+      nearRail.add(t);
+    }
+  }
+  env.add(nearRail);
+
+  addHaze(env, theme, W); // en dernier : tout ce qui précède est du décor à faire reculer
   return env;
 }
 

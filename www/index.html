@@ -179,7 +179,7 @@
         <button id="sheet-close" class="close"><svg class="ic"><use href="#i-back"/></svg></button>
       </div>
       <div id="part-statlist" class="part-statlist"></div>
-      <div id="paint-row" class="paint-row hidden"></div>
+      <div id="sticker-row" class="sticker-row hidden"></div>
       <div class="sheet-actions">
         <button id="btn-equip" class="btn primary">Équiper</button>
         <button id="btn-upgrade" class="btn gold"></button>
@@ -280,12 +280,15 @@
           <div id="hud-name-l" class="hud-name"></div>
           <div class="hpbar"><div id="ghost-l" class="hpghost"></div><div id="hp-l" class="hpfill me"></div></div>
         </div>
-        <div id="hud-timer">45</div>
         <div class="fighter right">
           <div id="hud-name-r" class="hud-name"></div>
           <div class="hpbar"><div id="ghost-r" class="hpghost foe"></div><div id="hp-r" class="hpfill foe"></div></div>
         </div>
       </div>
+      <!-- Le temps restant se lit ici, en fine barre de tension, et surtout SUR LE
+           TERRAIN : ce sont les murs de la mort qui se referment. Pas de cadran
+           chiffré au centre de l'écran — il volait le regard à l'action. -->
+      <div class="hud-clock"><div id="hud-clock-fill"></div></div>
     </div>
     <div id="battle-msg" class="battle-msg hidden"></div>
     <div id="battle-toast" class="battle-toast hidden"></div>
@@ -325,7 +328,7 @@
       <button id="btn-shop-back" class="close-round"><svg class="ic"><use href="#i-back"/></svg></button>
       <div>
         <div class="roster-title">Boutique</div>
-        <div class="roster-sub">Caisses, peintures et co-pilotes !</div>
+        <div class="roster-sub">Caisses, autocollants et co-pilotes !</div>
       </div>
       <div class="chip wallet"><svg class="ic"><use href="#i-coin"/></svg><span id="shop-coins">0</span></div>
     </header>

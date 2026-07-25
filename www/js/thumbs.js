@@ -100,7 +100,8 @@ export function copilotThumb(id) {
 
 // Vignette d'une pièce (cachée par type/peinture — le niveau ne change pas le visuel).
 export function partThumb(part) {
-  const key = `${part.kind}:${part.type}:${part.paint || ''}`;
+  // les étoiles changent la MATIÈRE de la pièce : elles font partie de la clé
+  const key = `${part.kind}:${part.type}:${part.stars || 0}:${part.sticker || ''}`;
   if (cache.has(key)) return cache.get(key);
   const model = createPartModel(part);
   const fit = model.userData.fit || 1.5;
@@ -119,7 +120,7 @@ const carCache = new Map();
 const carPartKey = p => p ? `${p.type}.${p.stars || 0}.${p.level || 0}` : '';
 
 export function carSnapshot(loadout, { dir = 1, w = 560, h = 320 } = {}) {
-  const key = `car:${carPartKey(loadout.body)}:${loadout.body?.paint || ''}` +
+  const key = `car:${carPartKey(loadout.body)}:${loadout.body?.sticker || ''}` +
     `:${(loadout.wheels || []).map(carPartKey).join(',')}` +
     `:${(loadout.weapons || []).map(carPartKey).join(',')}` +
     `:${(loadout.gadgets || []).map(carPartKey).join(',')}:${dir}:${w}x${h}`;

@@ -2,8 +2,10 @@
 import {
   BODIES, WHEELS, WEAPONS, GADGETS, partDef, partMult, bodyEnergy,
   newPart, seededRng, pick, randomPart, rollStars, CAT_NAMES,
-  LEAGUES, leagueIndex, SETS,
+  LEAGUES, leagueIndex, SETS, STICKERS,
 } from './data.js';
+
+const STICKER_IDS = STICKERS.map(s => s.id);
 
 const SAVE_KEY = 'maks_save_v1';
 export const ROSTER_SIZE = 14;        // 14 adversaires par étape, comme dans CATS
@@ -23,17 +25,17 @@ export const state = {
   copilot: 'ronron',
   playerName: 'Toi',
   settings: { sound: true, haptics: true },
-  paints: [],              // peintures débloquées en boutique (les 3 premières sont offertes)
+  stickers: [],            // autocollants débloqués en boutique (les 3 premiers sont offerts)
   copilotsBought: [],      // co-pilotes débloqués en avance à la boutique
   inventory: [],           // liste de pièces
   equipped: { body: null, wheels: [null, null], weapons: [], gadgets: [] }, // ids
 };
 
-// Les 3 premières peintures du nuancier sont offertes, le reste s'achète.
-export const FREE_PAINTS = 3;
-export function paintOwned(color, paintsList) {
-  const idx = paintsList.indexOf(color);
-  return idx > -1 && (idx < FREE_PAINTS || state.paints.includes(color));
+// Les 3 premiers autocollants sont offerts, le reste s'achète.
+export const FREE_STICKERS = 3;
+export function stickerOwned(id, list) {
+  const idx = list.findIndex(s => s.id === id);
+  return idx > -1 && (idx < FREE_STICKERS || state.stickers.includes(id));
 }
 
 // Bonus permanent de prestige appliqué à la machine du joueur.
@@ -59,7 +61,13 @@ export function load() {
       state.playerName = state.playerName.slice(0, 12);
       if (!state.settings || typeof state.settings !== 'object') state.settings = {};
       state.settings = { sound: state.settings.sound !== false, haptics: state.settings.haptics !== false };
-      if (!Array.isArray(state.paints)) state.paints = [];
+      // migration : les anciennes sauvegardes stockaient des peintures ; on
+      // convertit le nombre d'achats en autocollants pour ne rien voler au joueur
+      if (Array.isArray(s.paints) && !Array.isArray(s.stickers)) {
+        state.stickers = STICKER_IDS.slice(FREE_STICKERS, FREE_STICKERS + s.paints.length);
+        delete state.paints;
+      }
+      if (!Array.isArray(state.stickers)) state.stickers = [];
       if (!Array.isArray(state.copilotsBought)) state.copilotsBought = [];
       if (typeof state.shopDaily !== 'string') state.shopDaily = '';
       if (!Number.isFinite(state.bestStage) || state.bestStage < state.stage) state.bestStage = state.stage;

@@ -73,7 +73,15 @@ export function preloadAssets(onProgress = null) {
   const loader = new GLTFLoader();
   const keys = Object.keys(MANIFEST);
   let done = 0;
-  return Promise.all(keys.map(key => new Promise(resolve => {
+  // l'atlas de palette, à part : il sert à fabriquer les atlas de palier, et
+  // il doit être prêt AVANT la première machine (tout le jeu clone en synchrone)
+  const atlasLoad = new Promise(resolve => {
+    const atlas = new Image();
+    atlas.onload = () => { ATLAS_IMG = atlas; resolve(); };
+    atlas.onerror = () => resolve(); // absent : les machines restent en teintes d'origine
+    atlas.src = 'models/car/Textures/colormap.png';
+  });
+  return Promise.all([atlasLoad].concat(keys.map(key => new Promise(resolve => {
     loader.load(MANIFEST[key], gltf => {
       const root = toonify(gltf.scene);
       const box = new THREE.Box3().setFromObject(root);
@@ -91,7 +99,75 @@ export function preloadAssets(onProgress = null) {
       done++; onProgress?.(done / keys.length);
       resolve();
     });
-  }))).then(() => { ready = true; });
+  })))).then(() => { ready = true; });
+}
+
+// ---------------------------------------------------------------------------
+// ATLAS DE PALIER — la couleur d'une pièce dit sa puissance (règle 4 de la DA).
+//
+// Les modèles Kenney partagent un unique atlas de palette (`colormap.png`) :
+// chaque facette y pointe vers une case de couleur. On régénère cet atlas une
+// fois par palier en remplaçant les cases COLORÉES par la teinte du palier, et
+// en laissant intactes les cases GRISES (vitres, pneus, chrome, phares) — c'est
+// ce qui distingue une machine repeinte d'une machine en bois, en acier ou en
+// carbone, sans toucher un seul modèle.
+let ATLAS_IMG = null;
+const TIER_TEX = new Map();
+
+function hsl2rgb(h, s, l) {
+  if (s === 0) { const v = Math.round(l * 255); return [v, v, v]; }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const f = t => {
+    t = (t + 1) % 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  return [Math.round(f(h + 1 / 3) * 255), Math.round(f(h) * 255), Math.round(f(h - 1 / 3) * 255)];
+}
+
+function rgb2hsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+  if (mx === mn) return [0, 0, l];
+  const d = mx - mn;
+  const s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+  let h;
+  if (mx === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (mx === g) h = ((b - r) / d + 2) / 6;
+  else h = ((r - g) / d + 4) / 6;
+  return [h, s, l];
+}
+
+// `hex` : teinte du palier. Retourne une CanvasTexture partagée (jamais disposée).
+export function tierAtlas(hex) {
+  const key = String(hex);
+  if (TIER_TEX.has(key)) return TIER_TEX.get(key);
+  if (!ATLAS_IMG) return null; // l'atlas n'a pas encore été chargé : le jeu tourne quand même
+  const c = document.createElement('canvas');
+  c.width = ATLAS_IMG.width; c.height = ATLAS_IMG.height;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(ATLAS_IMG, 0, 0);
+  const img = x.getImageData(0, 0, c.width, c.height);
+  const px = img.data;
+  const [th, ts, tl] = rgb2hsl((hex >> 16) & 255, (hex >> 8) & 255, hex & 255);
+  for (let i = 0; i < px.length; i += 4) {
+    const [, s, l] = rgb2hsl(px[i], px[i + 1], px[i + 2]);
+    if (s < 0.16) continue; // gris : vitres, pneus, chrome — le palier n'y touche pas
+    // on garde le MODELÉ de la case d'origine (son écart de clarté), on
+    // n'impose que la teinte et la saturation du palier
+    const [r, g, b] = hsl2rgb(th, ts, Math.min(0.94, Math.max(0.06, tl + (l - 0.5) * 0.55)));
+    px[i] = r; px[i + 1] = g; px[i + 2] = b;
+  }
+  x.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.flipY = false; // même convention que les textures glTF
+  tex.userData.shared = true;
+  TIER_TEX.set(key, tex);
+  return tex;
 }
 
 export function hasAsset(key) { return !!ASSETS[key]; }

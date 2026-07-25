@@ -4,7 +4,7 @@ import { buildCarSpec } from './car.js';
 import { copilotMods, activeSets } from './state.js';
 import { COPILOTS, WHEELS, partMult, partDef } from './data.js';
 import { createRenderer, disposeModel, makeBlobShadow, INK, toonGradient } from './render3d.js';
-import { createCarModel, createArena, createDeathWall, skyTexture, addSkyDecor, pulseLaserLens, toonMat, kerbTexture, ARENA_THEMES, S } from './models3d.js';
+import { createCarModel, createArena, createDeathWall, skyTexture, addSkyDecor, addForegroundProps, layoutForegroundProps, pulseLaserLens, toonMat, kerbTexture, ARENA_THEMES, S } from './models3d.js';
 import {
   sfxHit, sfxBoom, sfxLaser, sfxShot, sfxRocket, sfxCount, sfxGo, sfxSiren, sfxClang,
   startBattleAudio, stopBattleAudio, setEngineSpeed, crowdExcite, startMusic, stopMusic,
@@ -164,7 +164,9 @@ function buildScene(battle, themeIndex = 0) {
 
   // meshes du terrain (alignés sur les corps statiques Matter)
   // terrain : version « jouet » — collines en herbe foncée, rampes claires, contour d'encre
-  const hillColor = new THREE.Color(theme.ground).multiplyScalar(0.78).getHex();
+  // le terrain est l'ancre sombre de l'image : c'est lui qui empêche le combat
+  // de flotter dans une purée pâle une fois le décor lavé
+  const hillColor = new THREE.Color(theme.ground).multiplyScalar(0.66).getHex();
   const rampColor = new THREE.Color(theme.track).lerp(new THREE.Color(0xffffff), 0.25).getHex();
   const inkMat = new THREE.MeshBasicMaterial({ color: INK, side: THREE.BackSide });
   const edgeMat = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
@@ -321,6 +323,9 @@ function buildScene(battle, themeIndex = 0) {
   // départ large : le dolly-in pendant le compte à rebours sert d'intro
   battle.camX = 0; battle.camDist = 30; battle.camLookY = 4.5;
   battle.baseFov = 42; battle.tanV = Math.tan(21 * Math.PI / 180); battle.tanH = battle.tanV * 0.46;
+  // masses floues aux bords du cadre — enfants de la caméra, donc solidaires
+  // du zoom : elles ferment la composition à tous les niveaux de dézoom
+  battle.fgProps = addForegroundProps(scene, camera);
 
   // post-processing : bloom léger (lasers, phares, explosions, néons)
   const composer = new EffectComposer(renderer);
@@ -885,7 +890,7 @@ function showToast(battle, text) {
   void el.offsetWidth;
   el.style.animation = '';
   clearTimeout(battle.toastTimer);
-  battle.toastTimer = setTimeout(() => el.classList.add('hidden'), 1600);
+  battle.toastTimer = setTimeout(() => el.classList.add('hidden'), 1100);
 }
 
 function showMsg(battle, text) {
@@ -1381,11 +1386,11 @@ function updateHud(battle, remaining, dt) {
   const [me, foe] = battle.cars;
   hudBarStep(battle, 'L', me, dt);
   hudBarStep(battle, 'R', foe, dt);
-  const t = document.getElementById('hud-timer');
-  if (battle.time < 0) t.textContent = BATTLE_TIME;
-  else if (remaining > 0) t.textContent = Math.ceil(remaining);
-  else t.textContent = '☠';
-  t.style.color = remaining < 10 ? '#ff6d84' : '';
+  // barre de tension : elle se vide, elle rougit, elle ne parle jamais en chiffres
+  const clock = document.getElementById('hud-clock-fill');
+  const frac = battle.time < 0 ? 1 : Math.max(0, Math.min(1, remaining / BATTLE_TIME));
+  clock.style.width = (frac * 100).toFixed(1) + '%';
+  clock.classList.toggle('urgent', remaining > 0 && remaining < 10);
 }
 
 // ---------- rendu 3D ----------
@@ -1409,6 +1414,7 @@ function resize(battle) {
   battle.tanH = battle.tanV * aspect;
   battle.camera.fov = battle.baseFov;
   battle.camera.updateProjectionMatrix();
+  layoutForegroundProps(battle.fgProps, battle.camera); // le cadre a changé, les props aussi
   battle.overlay.width = w * dpr;
   battle.overlay.height = h * dpr;
   battle.dpr = dpr;
@@ -1532,9 +1538,13 @@ function render(battle, t, dt) {
   const right = Math.max(ax + a.model.radX, bx + b.model.radX);
   const bot = Math.min(ay - a.model.radY, by - b.model.radY);
   const top = Math.max(ay + a.model.radY, by + b.model.radY);
-  const halfW = Math.max(right - battle.camX, battle.camX - left) + 1.3;
-  const needH = (top - bot) + 4.0;
-  const visW = Math.min(19, Math.max(9.5, Math.max(2 * halfW, needH * camera.aspect)));
+  const halfW = Math.max(right - battle.camX, battle.camX - left) + 1.1;
+  const needH = (top - bot) + 3.6;
+  // plancher de largeur visible : en portrait c'est LUI qui décide de la taille
+  // des machines à l'écran (la hauteur visible vaut ~2,2x la largeur). Le
+  // descendre remplit le cadre ; le descendre trop laisse sortir une machine
+  // catapultée — 8,4 est le point mesuré où le cadrage reste à 100%.
+  const visW = Math.min(19, Math.max(8.4, Math.max(2 * halfW, needH * camera.aspect)));
   let targetDist = Math.min(44, Math.max(11, (visW / 2) / battle.tanH));
   // plan large sur l'explosion avant le dolly-in sur l'épave
   if (battle.finished && battle.endTimer < 1.35) targetDist = Math.min(targetDist, 15);

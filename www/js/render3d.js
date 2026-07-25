@@ -1,6 +1,12 @@
 // Rendu 3D partagé : création de renderers, scènes studio, éclairages.
-// Direction artistique « ATELIER NOCTURNE » : garage industriel la nuit,
-// acier brossé sombre, UNE source chaude ambrée, cel-shading 3 tons, contours encre.
+//
+// DIRECTION ARTISTIQUE UNIQUE — « ATELIER OUVERT »
+//   1. L'INTERFACE est sombre (acier brossé, ambre). La SCÈNE 3D est CLAIRE.
+//      Cette opposition est volontaire : elle sépare le chrome du jeu.
+//   2. Le décor recule (S ≤ 0,30 · V ≥ 0,70), le jouable avance (S ≥ 0,50).
+//   3. Le contour d'encre est réservé au JOUABLE. Jamais sur le décor.
+//   4. La COULEUR d'une pièce encode sa puissance (TIER_MATS), jamais un goût.
+// Ces quatre règles priment sur toute retouche esthétique ponctuelle.
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from './lib/BufferGeometryUtils.js';
 import { skyTexture } from './models3d.js';
@@ -91,13 +97,11 @@ export function outlineForGroup(group, thickness = 0.022) {
   return mesh;
 }
 
-// Même contour, mais teinté « noir d'atelier » : l'encre violette du jeu jurerait
-// sur le métal sombre du garage.
-function atelierOutline(group, thickness = 0.026) {
-  const o = outlineForGroup(group, thickness);
-  if (o) o.material.color.setHex(PAL.edge);
-  return o;
-}
+// NOTE — il n'existe volontairement PLUS de contour d'encre sur le décor.
+// Le trait est un MARQUEUR EXCLUSIF du jouable : machines, pièces, co-pilote.
+// Un établi cerné de noir « pèse » autant qu'une machine à l'œil, et c'est
+// précisément la confusion jouable/non-jouable qu'on cherche à supprimer.
+// Le décor se sépare par la valeur et la saturation, jamais par le trait.
 
 // Fusionne N copies d'une même géométrie en UN seul mesh : les petites pièces
 // répétées (boulons, vérins, roulettes, aérations) ne coûtent qu'un draw call.
@@ -153,44 +157,52 @@ function seeded(seed) {
   return () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
 }
 
-// Fond d'atelier : dégradé très sombre + halo ambré diffus + vignettage.
-// (remplace le ciel de jour : `skyTexture` vit dans models3d.js, intouchable ici)
+// Fond d'atelier : mur LAVÉ et CLAIR (V ≈ 0,74-0,86, S ≈ 0,10).
+//
+// C'est le pilier de la composition : l'interface (CSS) reste sombre, la SCÈNE
+// 3D est claire. Le joueur lit alors sa machine — objet saturé et détouré — sur
+// un fond neutre, exactement comme dans les jeux de construction qui marchent.
+// L'erreur corrigée ici : la DA nocturne du chrome avait débordé sur la scène,
+// et la machine était devenue le point le plus SOMBRE de son propre écran.
+// Ne pas re-assombrir ce fond sans remesurer (cible : fond V ≥ 0,70).
 function atelierBackdrop() {
   return cachedTexture('bg:atelier', 1024, 640, (x, w, h) => {
     const g = x.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, '#080707');
-    g.addColorStop(0.42, '#120F0D');
-    g.addColorStop(0.74, '#1D1712');
-    g.addColorStop(1, '#0B0908');
+    // NEUTRE FROID, volontairement : les carrosseries sont chaudes (bois, or,
+    // rouille). Un fond beige les noierait — c'est l'erreur qu'on a corrigée ici.
+    g.addColorStop(0, '#B9C0C7');   // haut : la lumière du jour tombe de la verrière
+    g.addColorStop(0.44, '#CBD2D8');
+    g.addColorStop(0.78, '#BEC5CC');
+    g.addColorStop(1, '#A3AAB2');   // bas : le mur retombe dans son ombre au sol
     x.fillStyle = g;
     x.fillRect(0, 0, w, h);
-    // nervures verticales de tôle, à peine lisibles dans la pénombre
+    // nervures de tôle : à peine marquées, le fond ne doit rien raconter
     for (let i = 0; i < 32; i++) {
       const px = (i + 0.5) * (w / 32);
-      x.fillStyle = 'rgba(255,196,140,.030)';
+      x.fillStyle = 'rgba(255,252,246,.16)';
       x.fillRect(px - 3, 0, 3, h);
-      x.fillStyle = 'rgba(0,0,0,.34)';
+      x.fillStyle = 'rgba(0,0,0,.06)';
       x.fillRect(px, 0, 5, h);
     }
-    // halo de la baladeuse (le seul point chaud du fond)
-    const halo = x.createRadialGradient(w * 0.5, h * 0.62, 0, w * 0.5, h * 0.62, w * 0.44);
-    halo.addColorStop(0, 'rgba(255,138,31,.20)');
-    halo.addColorStop(0.45, 'rgba(255,110,20,.07)');
-    halo.addColorStop(1, 'rgba(255,110,20,0)');
+    // halo de la baladeuse : une pointe de chaleur, jamais assez pour teinter le mur
+    const halo = x.createRadialGradient(w * 0.5, h * 0.58, 0, w * 0.5, h * 0.58, w * 0.5);
+    halo.addColorStop(0, 'rgba(255,222,170,.16)');
+    halo.addColorStop(0.5, 'rgba(255,206,150,.06)');
+    halo.addColorStop(1, 'rgba(255,200,140,0)');
     x.fillStyle = halo;
     x.fillRect(0, 0, w, h);
-    // vignettage : les angles retombent dans la nuit
-    const vig = x.createRadialGradient(w * 0.5, h * 0.55, h * 0.28, w * 0.5, h * 0.55, w * 0.72);
-    vig.addColorStop(0, 'rgba(0,0,0,0)');
-    vig.addColorStop(1, 'rgba(0,0,0,.85)');
+    // vignettage divisé par 3 : il cadre, il n'éteint plus
+    const vig = x.createRadialGradient(w * 0.5, h * 0.55, h * 0.34, w * 0.5, h * 0.55, w * 0.76);
+    vig.addColorStop(0, 'rgba(40,46,54,0)');
+    vig.addColorStop(1, 'rgba(40,46,54,.26)');
     x.fillStyle = vig;
     x.fillRect(0, 0, w, h);
-    // poussière en suspension dans le faisceau
+    // salissures d'atelier : le mur est vécu, pas propre
     const rnd = seeded(97);
-    for (let i = 0; i < 90; i++) {
-      const px = w * 0.5 + (rnd() - 0.5) * w * 0.7, py = h * (0.25 + rnd() * 0.7);
-      x.fillStyle = `rgba(255,206,150,${0.03 + rnd() * 0.06})`;
-      x.beginPath(); x.arc(px, py, 0.8 + rnd() * 1.6, 0, 7); x.fill();
+    for (let i = 0; i < 110; i++) {
+      const px = rnd() * w, py = h * (0.2 + rnd() * 0.8);
+      x.fillStyle = `rgba(78,86,96,${0.02 + rnd() * 0.05})`;
+      x.beginPath(); x.ellipse(px, py, 6 + rnd() * 40, 3 + rnd() * 14, rnd() * 3, 0, 7); x.fill();
     }
   });
 }
@@ -279,20 +291,21 @@ export function sizeToCanvas(renderer, camera) {
 // chaud ambré braqué sur le podium, un appoint large et un liseré froid qui
 // dessine l'acier. Volontairement peu de sources : les aplats toon restent nets.
 export function studioLights(scene) {
-  // la nuit qui filtre par la verrière : froide, presque rien
-  scene.add(new THREE.AmbientLight(0x3C556E, 0.42));
+  // Le fond est clair : la machine doit être éclairée FRANCHEMENT, sinon elle
+  // redevient la tache sombre de son propre écran (le défaut qu'on corrige).
+  scene.add(new THREE.AmbientLight(0xFFF1DE, 0.78));
   // LA source : baladeuse ambrée suspendue au-dessus du pont élévateur
-  const spot = new THREE.SpotLight(0xFFC98A, 1.38, 0, 0.8, 0.55, 0);
+  const spot = new THREE.SpotLight(0xFFD7A0, 0.95, 0, 0.8, 0.55, 0);
   spot.position.set(0.25, 6.4, 1.0); // dans l'axe de la baladeuse visible
   spot.target.position.set(0, 0, 0);
   scene.add(spot);
   scene.add(spot.target);
-  // appoint chaud très large : hors du cône, l'atelier ne tombe pas dans le noir absolu
-  const sun = new THREE.DirectionalLight(0xFF9A3C, 0.42);
+  // clé chaude de trois quarts : elle sculpte la carrosserie
+  const sun = new THREE.DirectionalLight(0xFFEBCC, 0.90);
   sun.position.set(3.5, 6.5, 5);
   scene.add(sun);
-  // liseré froid côté opposé : c'est lui qui révèle les arêtes de tôle
-  const rim = new THREE.DirectionalLight(0x6FA8D0, 0.24);
+  // liseré froid côté opposé : c'est lui qui détache la silhouette du mur clair
+  const rim = new THREE.DirectionalLight(0xCFE4F5, 0.55);
   rim.position.set(-5.5, 3.2, -6);
   scene.add(rim);
   return { sun, spot, rim };
@@ -305,24 +318,25 @@ function garageFloorTexture() {
   return cachedTexture('floor:garage', 1024, 1024, (x, w) => {
     const rnd = seeded(31);
     const C = w / 2; // le centre du canvas = le centre du podium
-    x.fillStyle = '#141110';
+    // béton CLAIR : le sol fait partie du fond, il recule (cf. atelierBackdrop)
+    x.fillStyle = '#AEB4BA';
     x.fillRect(0, 0, w, w);
     // béton taché : marbrures larges
     for (let i = 0; i < 180; i++) {
       const a = rnd() * Math.PI * 2, d = rnd() * C;
-      x.fillStyle = rnd() > 0.5 ? 'rgba(60,54,48,.16)' : 'rgba(6,5,5,.30)';
+      x.fillStyle = rnd() > 0.5 ? 'rgba(246,250,255,.14)' : 'rgba(62,70,80,.12)';
       x.beginPath();
       x.ellipse(C + Math.cos(a) * d, C + Math.sin(a) * d, 20 + rnd() * 90, 14 + rnd() * 60, rnd() * 3, 0, 7);
       x.fill();
     }
     // plaques de tôle : joints droits + rivets
-    x.strokeStyle = 'rgba(0,0,0,.55)';
+    x.strokeStyle = 'rgba(58,66,76,.22)';
     x.lineWidth = 5;
     for (let i = 1; i < 6; i++) {
       x.beginPath(); x.moveTo(0, i * 170); x.lineTo(w, i * 170); x.stroke();
       x.beginPath(); x.moveTo(i * 170, 0); x.lineTo(i * 170, w); x.stroke();
     }
-    x.strokeStyle = 'rgba(150,124,96,.10)';
+    x.strokeStyle = 'rgba(248,252,255,.34)';
     x.lineWidth = 2;
     for (let i = 1; i < 6; i++) {
       x.beginPath(); x.moveTo(0, i * 170 + 4); x.lineTo(w, i * 170 + 4); x.stroke();
@@ -330,20 +344,20 @@ function garageFloorTexture() {
     }
     for (let ix = 1; ix < 6; ix++) {
       for (let iy = 1; iy < 6; iy++) {
-        x.fillStyle = 'rgba(163,138,110,.16)';
+        x.fillStyle = 'rgba(66,76,86,.22)';
         x.beginPath(); x.arc(ix * 170, iy * 170, 4, 0, 7); x.fill();
       }
     }
     // marquage de zone au pochoir : rectangle jaune usé autour du pont
     x.save();
     x.translate(C, C);
-    x.strokeStyle = 'rgba(255,196,0,.30)';
+    x.strokeStyle = 'rgba(206,150,0,.42)';
     x.lineWidth = 9;
     x.setLineDash([46, 26]);
     x.strokeRect(-215, -215, 430, 430);
     x.setLineDash([]);
     // équerres d'angle pleines
-    x.strokeStyle = 'rgba(255,196,0,.46)';
+    x.strokeStyle = 'rgba(206,150,0,.58)';
     x.lineWidth = 11;
     for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
       x.beginPath();
@@ -353,46 +367,46 @@ function garageFloorTexture() {
       x.stroke();
     }
     // cercle de sécurité autour de l'embase
-    x.strokeStyle = 'rgba(255,196,0,.22)';
+    x.strokeStyle = 'rgba(206,150,0,.34)';
     x.lineWidth = 7;
     x.setLineDash([20, 18]);
     x.beginPath(); x.arc(0, 0, 108, 0, 7); x.stroke();
     x.setLineDash([]);
     // pochoir texte
-    x.fillStyle = 'rgba(255,196,0,.26)';
+    x.fillStyle = 'rgba(150,110,10,.38)';
     x.font = '800 30px "Baloo 2", sans-serif';
     x.textAlign = 'center';
     x.fillText('ZONE 01  ·  ATELIER MAKS', 0, 262);
     x.restore();
     // traces d'huile : flaques noires à léger reflet ambré
     for (const [ox, oy, orr] of [[C + 210, C + 170, 46], [C - 250, C + 120, 34], [C + 120, C - 250, 28], [C - 160, C - 220, 22]]) {
-      x.fillStyle = 'rgba(0,0,0,.62)';
+      x.fillStyle = 'rgba(42,32,24,.42)';
       x.beginPath(); x.ellipse(ox, oy, orr, orr * 0.66, 0.6, 0, 7); x.fill();
-      x.fillStyle = 'rgba(255,138,31,.10)';
+      x.fillStyle = 'rgba(255,168,60,.16)';
       x.beginPath(); x.ellipse(ox - orr * 0.2, oy - orr * 0.16, orr * 0.5, orr * 0.28, 0.6, 0, 7); x.fill();
       for (let i = 0; i < 5; i++) {
         const a = rnd() * Math.PI * 2, d = orr * (1.1 + rnd() * 0.7);
-        x.fillStyle = 'rgba(0,0,0,.5)';
+        x.fillStyle = 'rgba(42,32,24,.34)';
         x.beginPath(); x.arc(ox + Math.cos(a) * d, oy + Math.sin(a) * d, 3 + rnd() * 6, 0, 7); x.fill();
       }
     }
     // caniveau / grille d'évacuation
-    x.fillStyle = 'rgba(0,0,0,.72)';
+    x.fillStyle = 'rgba(46,36,28,.55)';
     x.fillRect(C + 300, C - 60, 54, 120);
-    x.fillStyle = 'rgba(120,100,80,.18)';
+    x.fillStyle = 'rgba(240,232,220,.22)';
     for (let i = 0; i < 7; i++) x.fillRect(C + 306, C - 52 + i * 16, 42, 7);
     // flaque de lumière de la baladeuse (par-dessus tout : c'est elle qui structure l'image)
     const pool = x.createRadialGradient(C, C - 30, 0, C, C - 30, 400);
-    pool.addColorStop(0, 'rgba(255,150,50,.30)');
-    pool.addColorStop(0.36, 'rgba(255,126,30,.14)');
-    pool.addColorStop(0.72, 'rgba(255,110,20,.035)');
-    pool.addColorStop(1, 'rgba(255,110,20,0)');
+    pool.addColorStop(0, 'rgba(255,226,180,.16)');
+    pool.addColorStop(0.36, 'rgba(255,214,160,.07)');
+    pool.addColorStop(1, 'rgba(255,206,150,0)');
     x.fillStyle = pool;
     x.fillRect(0, 0, w, w);
-    // nuit qui reprend le dessus sur les bords
-    const dark = x.createRadialGradient(C, C, w * 0.20, C, C, w * 0.5);
-    dark.addColorStop(0, 'rgba(6,5,5,0)');
-    dark.addColorStop(1, 'rgba(5,4,4,.94)');
+    // les bords s'assombrissent JUSTE assez pour cadrer : diviser par 3 le
+    // vignettage était la moitié du correctif de lisibilité du garage
+    const dark = x.createRadialGradient(C, C, w * 0.22, C, C, w * 0.5);
+    dark.addColorStop(0, 'rgba(44,50,58,0)');
+    dark.addColorStop(1, 'rgba(44,50,58,.34)');
     x.fillStyle = dark;
     x.fillRect(0, 0, w, w);
   });
@@ -401,32 +415,33 @@ function garageFloorTexture() {
 // Mur de tôle ondulée (tuile répétée horizontalement autour de la scène).
 function shopWallTexture() {
   return cachedTexture('wall:tole', 256, 256, (x, w, h) => {
+    // même règle que le fond : mur CLAIR, contrastes internes faibles
     const g = x.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, '#0A0908');
-    g.addColorStop(0.5, '#211B16');
-    g.addColorStop(0.86, '#2A211A');
-    g.addColorStop(1, '#100C0A');
+    g.addColorStop(0, '#AEB5BD');
+    g.addColorStop(0.5, '#C6CDD4');
+    g.addColorStop(0.86, '#BAC1C9');
+    g.addColorStop(1, '#9AA1A9');
     x.fillStyle = g;
     x.fillRect(0, 0, w, h);
     // ondulations verticales
     for (let i = 0; i < 8; i++) {
       const px = i * 32;
       const rib = x.createLinearGradient(px, 0, px + 32, 0);
-      rib.addColorStop(0, 'rgba(0,0,0,.55)');
-      rib.addColorStop(0.34, 'rgba(255,190,130,.055)');
-      rib.addColorStop(0.55, 'rgba(255,214,166,.085)');
-      rib.addColorStop(1, 'rgba(0,0,0,.42)');
+      rib.addColorStop(0, 'rgba(44,52,62,.16)');
+      rib.addColorStop(0.34, 'rgba(248,252,255,.16)');
+      rib.addColorStop(0.55, 'rgba(252,254,255,.24)');
+      rib.addColorStop(1, 'rgba(44,52,62,.13)');
       x.fillStyle = rib;
       x.fillRect(px, 0, 32, h);
     }
     // lisses horizontales + rivets
     for (const yy of [58, 178]) {
-      x.fillStyle = 'rgba(0,0,0,.5)';
+      x.fillStyle = 'rgba(46,54,64,.18)';
       x.fillRect(0, yy, w, 9);
-      x.fillStyle = 'rgba(180,150,118,.12)';
+      x.fillStyle = 'rgba(248,252,255,.30)';
       x.fillRect(0, yy + 9, w, 2);
       for (let i = 0; i < 8; i++) {
-        x.fillStyle = 'rgba(196,166,132,.16)';
+        x.fillStyle = 'rgba(64,74,86,.20)';
         x.beginPath(); x.arc(i * 32 + 16, yy + 4, 2.4, 0, 7); x.fill();
       }
     }
@@ -434,7 +449,7 @@ function shopWallTexture() {
     const rnd = seeded(7);
     for (let i = 0; i < 10; i++) {
       const px = rnd() * w, py = 58 + rnd() * 40;
-      x.fillStyle = `rgba(138,74,24,${0.05 + rnd() * 0.09})`;
+      x.fillStyle = `rgba(150,96,44,${0.06 + rnd() * 0.10})`;
       x.fillRect(px, py, 2 + rnd() * 4, 40 + rnd() * 90);
     }
   }, { wrapS: true, wrapT: true, repeat: [14, 1] });
@@ -538,19 +553,19 @@ function liftApronTexture() {
     x.clearRect(0, 0, w, w);
     // ombre portée du pont
     const sh = x.createRadialGradient(C, C, 150, C, C, 250);
-    sh.addColorStop(0, 'rgba(4,3,3,.72)');
-    sh.addColorStop(1, 'rgba(4,3,3,0)');
+    sh.addColorStop(0, 'rgba(38,44,52,.34)');
+    sh.addColorStop(1, 'rgba(38,44,52,0)');
     x.fillStyle = sh;
     x.beginPath(); x.arc(C, C, 250, 0, 7); x.fill();
     // hachures de danger
     for (let i = 0; i < 64; i++) {
       const a0 = (i / 64) * Math.PI * 2, a1 = ((i + 1) / 64) * Math.PI * 2;
       if (i % 2) continue;
-      x.strokeStyle = 'rgba(255,196,0,.34)';
+      x.strokeStyle = 'rgba(196,142,0,.30)';
       x.lineWidth = 22;
       x.beginPath(); x.arc(C, C, 200, a0, a1); x.stroke();
     }
-    x.strokeStyle = 'rgba(255,196,0,.20)';
+    x.strokeStyle = 'rgba(196,142,0,.18)';
     x.lineWidth = 5;
     x.beginPath(); x.arc(C, C, 186, 0, 7); x.stroke();
     x.beginPath(); x.arc(C, C, 214, 0, 7); x.stroke();
@@ -591,7 +606,7 @@ function addAtelierShell(scene) {
   // plinthe d'ombre : le mur ne « flotte » pas sur le béton
   const base = new THREE.Mesh(
     new THREE.CylinderGeometry(26.9, 26.9, 1.1, 40, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0x070605, side: THREE.BackSide, transparent: true, opacity: 0.85, depthWrite: false })
+    new THREE.MeshBasicMaterial({ color: 0x5A4638, side: THREE.BackSide, transparent: true, opacity: 0.42, depthWrite: false })
   );
   base.position.y = FLOOR_Y + 0.55;
   scene.add(base);
@@ -702,19 +717,10 @@ function addShopLamp(scene) {
   lamp.position.set(0.2, 3.05, 0.9);
   scene.add(lamp);
 
-  // faisceau : cône additif très léger, jamais occlusif
-  const beam = new THREE.Mesh(
-    new THREE.ConeGeometry(2.6, 2.95, 24, 1, true),
-    new THREE.MeshBasicMaterial({
-      color: 0xFF9A22, transparent: true, opacity: 0.055, depthWrite: false,
-      side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
-    })
-  );
-  // apex pile dans la gueule de l'abat-jour, base sur la tôle du pont
-  beam.position.set(0.2, 1.45, 0.9);
-  beam.renderOrder = 4;
-  beam.userData.noOutline = true;
-  scene.add(beam);
+  // PAS de cône de faisceau : un rai de lumière ne se voit que dans le noir.
+  // Sur un atelier clair il se lisait comme un coin blanc collé devant la
+  // machine — exactement le genre d'effet qui trahit une image fabriquée.
+  // La lampe se raconte par son halo au sol et par son ampoule allumée.
 }
 
 export function fitCameraToBox(camera, size, dist = null) {
@@ -920,8 +926,6 @@ export function addHubDecor(scene) {
   const toolHandle = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.028, 5, 10, Math.PI), steel0);
   toolHandle.position.set(-0.35, 1.4, -0.1);
   bench.add(toolHandle);
-  const benchOutline = atelierOutline(bench, 0.028);
-  if (benchOutline) bench.add(benchOutline);
   const benchShadow = makeBlobShadow(1.9);
   benchShadow.scale.x = 1.1;
   benchShadow.position.y = 0.02;
@@ -1000,8 +1004,6 @@ export function addHubDecor(scene) {
   const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), toon(PAL.signal));
   helmet.position.set(0.5, 2.79, 0);
   locker.add(helmet);
-  const lockerOutline = atelierOutline(locker, 0.028);
-  if (lockerOutline) locker.add(lockerOutline);
   const lockerShadow = makeBlobShadow(1.1);
   lockerShadow.scale.x = 1.2;
   lockerShadow.position.y = 0.02;
@@ -1048,8 +1050,6 @@ export function addHubDecor(scene) {
   const drumCap = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.06, 8), toon(PAL.steelHi));
   drumCap.position.set(0.22, 1.1, 0.1);
   drum.add(drumCap);
-  const drumOutline = atelierOutline(drum, 0.026);
-  if (drumOutline) drum.add(drumOutline);
   // un bidon couché, pour casser l'alignement (cloné AVANT l'ombre au sol,
   // qui n'aurait aucun sens une fois le bidon basculé)
   const lying = drum.clone();
@@ -1103,8 +1103,6 @@ export function addHubDecor(scene) {
     [-0.46, 0.11, -0.26, 0, 0, Math.PI / 2], [0.46, 0.11, -0.26, 0, 0, Math.PI / 2],
   ]));
   wheelGeo.dispose();
-  const cartOutline = atelierOutline(cart, 0.026);
-  if (cartOutline) cart.add(cartOutline);
   const cartShadow = makeBlobShadow(0.62);
   cartShadow.scale.x = 1.3;
   cartShadow.position.y = 0.02;
@@ -1175,8 +1173,6 @@ export function addHubDecor(scene) {
     foot2.position.set(sx, 0.17, 0);
     comp.add(foot2);
   }
-  const compOutline = atelierOutline(comp, 0.026);
-  if (compOutline) comp.add(compOutline);
   const compShadow = makeBlobShadow(0.85);
   compShadow.position.y = 0.02;
   comp.add(compShadow);

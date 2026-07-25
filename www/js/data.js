@@ -181,10 +181,22 @@ export const MUTATORS = [
   { key: 'heavy',   name: 'Poids lourd',     desc: 'Gravité écrasante — tout le monde colle au bitume !' },
 ];
 
-// ---- Peintures de châssis ----
-export const PAINTS = [
-  '#3f9bff', '#9a63ff', '#35d97c', '#ff8f31', '#ff5f9e',
-  '#ff4b5e', '#ffc93e', '#4fd7ff', '#e8ecf8', '#39405c',
+// ---- Autocollants de châssis ----
+// La cosmétique vit ICI, et nulle part ailleurs. La carrosserie, elle, porte la
+// couleur de son palier (cf. TIER_MATS) : c'est ce qui permet de jauger un
+// adversaire d'un coup d'œil. Un jeu qui laisse repeindre les pièces perd
+// définitivement cette lecture — on ne le fait pas.
+export const STICKERS = [
+  { id: 'eclair',    name: 'Éclair' },
+  { id: 'patte',     name: 'Patte' },
+  { id: 'etoile',    name: 'Étoile' },
+  { id: 'flamme',    name: 'Flamme' },
+  { id: 'crane',     name: 'Crâne de chat' },
+  { id: 'damier',    name: 'Damier' },
+  { id: 'cible',     name: 'Cible' },
+  { id: 'couronne',  name: 'Couronne' },
+  { id: 'engrenage', name: 'Engrenage' },
+  { id: 'boulon',    name: 'Boulon' },
 ];
 
 export const CAT_NAMES = [

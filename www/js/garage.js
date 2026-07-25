@@ -1,10 +1,10 @@
 // Écran garage : aperçu 3D du véhicule, emplacements, inventaire, fiche pièce.
 import * as THREE from 'three';
-import { KIND_LABEL, partDef, partStats, maxLevel, upgradeCost, recycleValue, COPILOTS, PAINTS, LEAGUES, leagueIndex } from './data.js';
-import { state, save, isEquipped, buildLoadout, computeCarStats, loadoutValid, activeSets, equip, unequip, removePart, getPart, paintOwned, MEDALS_TO_ADVANCE } from './state.js';
+import { KIND_LABEL, partDef, partStats, maxLevel, upgradeCost, recycleValue, COPILOTS, STICKERS, LEAGUES, leagueIndex } from './data.js';
+import { state, save, isEquipped, buildLoadout, computeCarStats, loadoutValid, activeSets, equip, unequip, removePart, getPart, stickerOwned, MEDALS_TO_ADVANCE } from './state.js';
 import { buildCarSpec } from './car.js';
 import { createRenderer, createStudioScene, disposeModel } from './render3d.js';
-import { createCarModel, poseCarStatic } from './models3d.js';
+import { createCarModel, poseCarStatic, stickerTexture } from './models3d.js';
 import { partThumb, copilotThumb } from './thumbs.js';
 import { sfxClick, sfxBuy, sfxDenied } from './sfx.js';
 
@@ -442,29 +442,37 @@ function openSheet(part) {
     }
     list.appendChild(el);
   });
-  // peinture (corps uniquement)
-  const paintRow = document.getElementById('paint-row');
-  paintRow.innerHTML = '';
+  // autocollants (corps uniquement) — la seule cosmétique du jeu
+  const stickerRow = document.getElementById('sticker-row');
+  stickerRow.innerHTML = '';
   if (part.kind === 'body') {
-    paintRow.classList.remove('hidden');
-    for (const color of PAINTS) {
-      const owned = paintOwned(color, PAINTS);
+    stickerRow.classList.remove('hidden');
+    for (const st of STICKERS) {
+      const owned = stickerOwned(st.id, STICKERS);
       const sw = document.createElement('button');
-      sw.className = 'paint-swatch' + ((part.paint || '') === color ? ' selected' : '') + (owned ? '' : ' locked');
-      sw.style.background = `linear-gradient(180deg, ${color}, ${color}cc)`;
-      if (!owned) sw.innerHTML = '<svg class="ic"><use href="#i-lock"/></svg>';
+      sw.className = 'sticker-swatch' + (part.sticker === st.id ? ' selected' : '') + (owned ? '' : ' locked');
+      sw.title = st.name;
+      sw.setAttribute('aria-label', st.name);
+      if (owned) {
+        const img = document.createElement('img');
+        img.src = stickerTexture(st.id).image.toDataURL('image/png');
+        img.alt = st.name;
+        sw.appendChild(img);
+      } else {
+        sw.innerHTML = '<svg class="ic"><use href="#i-lock"/></svg>';
+      }
       sw.addEventListener('click', () => {
         sfxClick();
-        if (!owned) { garageToast('Débloque cette peinture à la Boutique !'); return; }
-        part.paint = part.paint === color ? undefined : color;
+        if (!owned) { garageToast('Débloque cet autocollant à la Boutique !'); return; }
+        part.sticker = part.sticker === st.id ? undefined : st.id;
         save();
         openSheet(part);
         renderGarage();
       });
-      paintRow.appendChild(sw);
+      stickerRow.appendChild(sw);
     }
   } else {
-    paintRow.classList.add('hidden');
+    stickerRow.classList.add('hidden');
   }
 
   const equipped = isEquipped(part.id);

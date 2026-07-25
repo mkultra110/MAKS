@@ -1,15 +1,15 @@
 // Point d'entrée : navigation entre écrans et déroulé d'une partie.
 import * as THREE from 'three';
-import { partDef, upgradeCost, LEAGUES, leagueIndex, SETS, MUTATORS, seededRng, randomPart, COPILOTS, PAINTS } from './data.js';
+import { partDef, upgradeCost, LEAGUES, leagueIndex, SETS, MUTATORS, seededRng, randomPart, COPILOTS, STICKERS } from './data.js';
 import {
   state, load, buildLoadout, computeCarStats, makeOpponent, makeRoster,
-  winRewards, defeatReward, prestigeBoost, loadoutValid, paintOwned, save,
+  winRewards, defeatReward, prestigeBoost, loadoutValid, stickerOwned, save,
   ROSTER_SIZE, MEDALS_TO_ADVANCE,
 } from './state.js';
 import { buildCarSpec } from './car.js';
 import { preloadAssets } from './assets.js';
 import { createRenderer, createStudioScene, addHubDecor, disposeModel, FLOOR_Y } from './render3d.js';
-import { createCarModel, poseCarStatic, catMascot } from './models3d.js';
+import { createCarModel, poseCarStatic, catMascot, stickerTexture } from './models3d.js';
 import { carSnapshot, partThumb, avatarThumb, copilotThumb } from './thumbs.js';
 import { initGarage, renderGarage, startPreview, stopPreview } from './garage.js';
 import { startBattle } from './battle.js';
@@ -72,7 +72,7 @@ const mascotState = { jumpT: -9, bubbleTimer: 0 };
 
 function loadoutKey(lo) {
   return JSON.stringify([
-    lo.body && (lo.body.id + (lo.body.paint || '')),
+    lo.body && (lo.body.id + (lo.body.sticker || '')),
     lo.wheels.map(w => w.id), lo.weapons.map(w => w.id), lo.gadgets.map(g => g.id),
   ]);
 }
@@ -461,7 +461,7 @@ function renderDailyBanner() {
   }
 }
 
-// ---------- Boutique : offre du jour, caisses, peintures, co-pilotes ----------
+// ---------- Boutique : offre du jour, caisses, autocollants, co-pilotes ----------
 const CRATES = [
   { key: 'bois', name: 'Caisse Bois', desc: '2 pièces surprises', price: 120,
     roll: rng => [randomPart(rng, state.stage), randomPart(rng, state.stage)] },
@@ -470,7 +470,7 @@ const CRATES = [
   { key: 'etoile', name: 'Caisse Étoile', desc: '3 pièces 3★+, dont une 4★ minimum', price: 900,
     roll: rng => [randomPart(rng, state.stage, 4), randomPart(rng, state.stage, 3), randomPart(rng, state.stage, 3)] },
 ];
-const PAINT_PRICE = 60;
+const STICKER_PRICE = 60;
 const COPILOT_PRICE = 450;
 
 function shopDailyOffer() {
@@ -564,26 +564,31 @@ function renderShop() {
     ));
   }
 
-  // — peintures (débloquées pour toutes les machines) —
-  section('Peintures — pour toutes tes machines', 'i-star');
+  // — autocollants (la seule cosmétique du jeu : la carrosserie garde la
+  //   couleur de son palier, cf. TIER_MATS) —
+  section('Autocollants — ta marque sur le capot', 'i-star');
   const pg = document.createElement('div');
-  pg.className = 'paint-shop';
-  for (const color of PAINTS) {
-    const owned = paintOwned(color, PAINTS);
+  pg.className = 'sticker-shop';
+  for (const st of STICKERS) {
+    const owned = stickerOwned(st.id, STICKERS);
     const b = document.createElement('button');
-    b.className = 'paint-swatch big' + (owned ? ' owned' : '');
-    b.style.background = `linear-gradient(180deg, ${color}, ${color}cc)`;
-    if (owned) b.textContent = '✓';
+    b.className = 'sticker-swatch big' + (owned ? ' owned' : '');
+    const img = document.createElement('img');
+    img.src = stickerTexture(st.id).image.toDataURL('image/png');
+    img.alt = st.name;
+    b.appendChild(img);
+    b.title = st.name;
+    if (owned) b.classList.add('owned');
     else {
       const tag = document.createElement('span');
-      tag.className = 'paint-price';
-      tag.textContent = PAINT_PRICE;
+      tag.className = 'sticker-price';
+      tag.textContent = STICKER_PRICE;
       b.appendChild(tag);
-      b.disabled = state.coins < PAINT_PRICE;
+      b.disabled = state.coins < STICKER_PRICE;
       b.addEventListener('click', () => {
         sfxClick();
-        state.coins -= PAINT_PRICE;
-        state.paints.push(color);
+        state.coins -= STICKER_PRICE;
+        state.stickers.push(st.id);
         save();
         sfxBuy();
         renderShop();
