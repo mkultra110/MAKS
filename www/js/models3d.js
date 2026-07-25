@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { partDef, COPILOTS } from './data.js';
 import { toonGradient, outlineForGroup, makeBlobShadow, INK } from './render3d.js';
+import { cloneFitted, cloneAsset, hasAsset, assetInfo, assetClips } from './assets.js';
 
 export const S = 0.02; // 50 px physiques = 1 unité 3D
 
@@ -214,7 +215,52 @@ export function catHead(size = 0.28, color = 0xffd9a0) {
 
 // ---------- mascotte : le chat entier, assis, pour le hub ----------
 // userData : { head, tail, body } pour l'animation idle (12 fps) côté main.js.
-export function catMascot(color = 0xffd9a0) {
+// Mascotte du hub : vrai chat d'artiste animé (idle + danse au tap).
+// userData reste compatible avec l'animation de main.js : { head, tail, body }.
+export function catMascot(color = 0xffd9a0, copilotId = 'ronron') {
+  const key = 'cat:' + copilotId;
+  if (hasAsset(key)) {
+    const holder = cloneAsset(key);
+    const info = assetInfo(key);
+    const s = 1.35 / info.size.y; // taille de scène cohérente avec le podium
+    holder.children[0].scale.setScalar(s);
+    holder.children[0].position.multiplyScalar(s);
+    holder.rotation.y = 0.4;
+    const mixer = new THREE.AnimationMixer(holder.children[0]);
+    const clips = assetClips(key);
+    const byName = n => clips.find(c => c.name === n);
+    const idle = byName('idle') || clips[1] || clips[0];
+    let current = null;
+    if (idle) { current = mixer.clipAction(idle); current.play(); }
+    // proxies inoffensifs : main.js écrit dessus sans rien casser
+    const dummy = () => { const g = new THREE.Group(); holder.add(g); return g; };
+    holder.userData = {
+      head: dummy(), tail: dummy(), body: dummy(),
+      mixer,
+      // joue un coup la danse (ou un geste) puis revient à l'idle
+      poke() {
+        const c = byName('dance') || byName('gesture-positive');
+        if (!c || !idle) return;
+        const act = mixer.clipAction(c);
+        act.reset();
+        act.setLoop(THREE.LoopRepeat, 4);
+        act.clampWhenFinished = false;
+        act.fadeIn(0.08).play();
+        current?.fadeOut(0.08);
+        setTimeout(() => {
+          act.fadeOut(0.15);
+          current = mixer.clipAction(idle);
+          current.reset().fadeIn(0.15).play();
+        }, 1500);
+      },
+    };
+    return holder;
+  }
+  return catMascotProcedural(color);
+}
+
+// Repli si le modèle d'artiste manque.
+function catMascotProcedural(color = 0xffd9a0) {
   const g = new THREE.Group();
   const skin = mat('catSkin' + color, { color, emissive: color, emissiveIntensity: 0.1 });
   const cream = mat('catBelly', { color: 0xfff6e0 });
@@ -555,6 +601,20 @@ function wheelGeo(key, make) {
 const WHEEL_FACE_COLORS = { basic: 0xFFF6E0, big: 0xFF7AB8, tiny: 0x49C4F0, spiked: 0xFFB800 };
 
 function wheelModel(w) {
+  // roue d'artiste (Kenney, CC0) calée sur le rayon physique du jeu
+  const rr = w.r * S;
+  const key = 'wheel:' + w.type;
+  if (hasAsset(key)) {
+    const info = assetInfo(key);
+    const holder = cloneAsset(key);
+    const inner = holder.children[0];
+    const s = (rr * 2) / info.size.y;      // le diamètre du modèle devient le diamètre du jeu
+    inner.scale.setScalar(s);
+    inner.position.multiplyScalar(s);
+    inner.position.y -= rr;                // le clone est posé sur son sol : on le recentre sur son AXE
+    inner.rotation.y = Math.PI / 2;        // l'axe de la roue regarde la caméra
+    return holder;
+  }
   const g = new THREE.Group();
   const r = w.r * S;
   const width = Math.max(0.22, r * 0.45);
@@ -612,14 +672,44 @@ export function createCarModel(spec, { shadows = true } = {}) {
   const paint = spec.loadout?.body?.paint;
   const color = paint ? new THREE.Color(paint) : (BODY_COLORS[spec.loadout?.body?.type] ?? 0x8899aa);
 
-  // peinture cartoon : aplat saturé cel-shadé
-  const bodyMat = new THREE.MeshToonMaterial({ color, gradientMap: toonGradient() });
-  const chassis = new THREE.Mesh(bodyGeometry(spec.loadout?.body?.type, bw, bh, depth), bodyMat);
-  bodyGroup.add(chassis);
-  // bas de caisse sombre (bi-ton)
-  const plate = new THREE.Mesh(roundedBox(bw * 0.96, bh * 0.36, depth * 0.9, 0.06), METAL_DARK());
-  plate.position.y = -bh / 2 + bh * 0.08;
-  bodyGroup.add(plate);
+  // CARROSSERIE : modèle 3D d'artiste (Kenney, CC0) calé sur les dimensions
+  // physiques du jeu ; repli sur la géométrie procédurale s'il manque.
+  const bodyType = spec.loadout?.body?.type;
+  const glbBody = hasAsset('body:' + bodyType) ? cloneFitted('body:' + bodyType, bw, bh * 1.45) : null;
+  let bodyMat, chassis;
+  if (glbBody) {
+    // les modèles embarquent leurs propres roues et parfois un pilote :
+    // on les retire, les nôtres suivent la physique et portent le co-pilote choisi
+    const strip = [];
+    glbBody.traverse(o => {
+      if (o.name && (/^wheel/i.test(o.name) || o.name === 'character')) strip.push(o);
+    });
+    for (const o of strip) o.parent?.remove(o);
+    // matériaux propres à CETTE machine : le flash de dégâts et la peinture
+    // ne doivent pas déteindre sur les autres véhicules
+    const seen = new Map();
+    glbBody.traverse(o => {
+      if (!o.isMesh || !o.material) return;
+      let m = seen.get(o.material.uuid);
+      if (!m) { m = o.material.clone(); m.userData.shared = false; seen.set(o.material.uuid, m); }
+      o.material = m;
+      if (!bodyMat) bodyMat = m;
+      chassis = chassis || o;
+    });
+    // teinte de peinture : on module l'atlas au lieu de l'écraser
+    if (paint && bodyMat) for (const m of seen.values()) m.color.lerp(new THREE.Color(paint), 0.75);
+    glbBody.position.y = -bh * 0.42; // le modèle est posé sur son sol, on le recentre
+    bodyGroup.add(glbBody);
+    bodyGroup.userData.roofY = -bh * 0.42 + (glbBody.userData.fitSize?.y || bh);
+  }
+  if (!bodyMat) {
+    bodyMat = new THREE.MeshToonMaterial({ color, gradientMap: toonGradient() });
+    chassis = new THREE.Mesh(bodyGeometry(bodyType, bw, bh, depth), bodyMat);
+    bodyGroup.add(chassis);
+    const plate = new THREE.Mesh(roundedBox(bw * 0.96, bh * 0.36, depth * 0.9, 0.06), METAL_DARK());
+    plate.position.y = -bh / 2 + bh * 0.08;
+    bodyGroup.add(plate);
+  }
   // néon sous châssis (vend l'arène nocturne)
   const glow = new THREE.Mesh(
     new THREE.PlaneGeometry(bw * 0.8, depth * 0.9),
@@ -653,7 +743,6 @@ export function createCarModel(spec, { shadows = true } = {}) {
   }
 
   // touches propres à chaque type de châssis
-  const bodyType = spec.loadout?.body?.type;
   if (bodyType === 'classic' || bodyType === 'pony') {
     // aileron arrière
     const wingMat = toonMat(0x2b2f45);
@@ -719,20 +808,24 @@ export function createCarModel(spec, { shadows = true } = {}) {
   // cockpit OUVERT : baquet, chat casqué bien visible, écharpe au vent
   const cabR = Math.min(bh * 0.62, 0.62);
   const cabX = -bw * 0.12;
+  // hauteur d'assise : le toit du modèle d'artiste quand il y en a un
+  const seatY = bodyGroup.userData.roofY !== undefined
+    ? bodyGroup.userData.roofY - cabR * 0.35
+    : bh * 0.5;
   const catColor = COPILOTS[spec.copilot]?.color ?? 0xffd9a0;
   const seat = new THREE.Mesh(new THREE.TorusGeometry(cabR * 0.7, 0.085, 10, 18), CREAM());
   seat.rotation.x = Math.PI / 2;
-  seat.position.set(cabX, bh * 0.5, 0);
+  seat.position.set(cabX, seatY, 0);
   bodyGroup.add(seat);
   const bust = new THREE.Mesh(
     new THREE.SphereGeometry(cabR * 0.42, 12, 10),
     mat('catSkin' + catColor, { color: catColor, emissive: catColor, emissiveIntensity: 0.1 })
   );
   bust.scale.set(1, 0.75, 0.9);
-  bust.position.set(cabX, bh * 0.5, 0);
+  bust.position.set(cabX, seatY, 0);
   bodyGroup.add(bust);
   const cat = catHead(cabR * 0.78, catColor); // le co-pilote choisi, STAR de la machine
-  cat.position.set(cabX, bh * 0.5 + cabR * 0.55, 0);
+  cat.position.set(cabX, seatY + cabR * 0.55, 0);
   cat.rotation.y = Math.PI / 5; // regarde vers l'avant
   bodyGroup.add(cat);
   // casque POW + étoile autocollante
@@ -754,10 +847,10 @@ export function createCarModel(spec, { shadows = true } = {}) {
   // écharpe rose + fanion au vent
   const scarf = new THREE.Mesh(new THREE.TorusGeometry(cabR * 0.4, cabR * 0.12, 8, 12), PINK());
   scarf.rotation.x = Math.PI / 2;
-  scarf.position.set(cabX, bh * 0.5 + cabR * 0.55 - cabR * 0.62, 0);
+  scarf.position.set(cabX, seatY + cabR * 0.55 - cabR * 0.62, 0);
   bodyGroup.add(scarf);
   const pennant = new THREE.Mesh(new THREE.BoxGeometry(cabR * 0.7, cabR * 0.22, 0.03), PINK());
-  pennant.position.set(cabX - cabR * 0.55, bh * 0.5, 0);
+  pennant.position.set(cabX - cabR * 0.55, seatY, 0);
   pennant.rotation.z = 0.25;
   bodyGroup.add(pennant);
   // pare-brise plat incliné (transparent : auto-exclu du contour)
@@ -766,7 +859,7 @@ export function createCarModel(spec, { shadows = true } = {}) {
     new THREE.MeshToonMaterial({ color: 0xBFE8FF, gradientMap: toonGradient(), transparent: true, opacity: 0.45 })
   );
   windshield.rotation.z = -0.5;
-  windshield.position.set(cabX + cabR * 0.8, bh * 0.52, 0);
+  windshield.position.set(cabX + cabR * 0.8, seatY + cabR * 0.04, 0);
   bodyGroup.add(windshield);
 
   // armes
@@ -865,9 +958,11 @@ export function createCarModel(spec, { shadows = true } = {}) {
     bumper.position.set(sx * (bw / 2 - 0.02), -bh * 0.24, 0);
     bodyGroup.add(bumper);
   }
-  const stripe = new THREE.Mesh(chassis.geometry, toonMat(0xFFF6E0));
-  stripe.scale.set(1.02, 1.02, 0.36);
-  bodyGroup.add(stripe);
+  if (!glbBody && chassis) { // la carrosserie d'artiste porte déjà sa livrée
+    const stripe = new THREE.Mesh(chassis.geometry, toonMat(0xFFF6E0));
+    stripe.scale.set(1.02, 1.02, 0.36);
+    bodyGroup.add(stripe);
+  }
 
   // contour d'encre fusionné : UN mesh pour le corps, un par paire de roues
   const bodyOutline = outlineForGroup(bodyGroup, 0.022);

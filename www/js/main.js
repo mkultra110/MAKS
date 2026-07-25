@@ -7,6 +7,7 @@ import {
   ROSTER_SIZE, MEDALS_TO_ADVANCE,
 } from './state.js';
 import { buildCarSpec } from './car.js';
+import { preloadAssets } from './assets.js';
 import { createRenderer, createStudioScene, addHubDecor, disposeModel, FLOOR_Y } from './render3d.js';
 import { createCarModel, poseCarStatic, catMascot } from './models3d.js';
 import { carSnapshot, partThumb, avatarThumb, copilotThumb } from './thumbs.js';
@@ -121,12 +122,11 @@ function refreshHubModels() {
       hub.carBodyY = model.userData.bodyGroup.position.y; // base pour le bob idle
     }
   }
-  const color = COPILOTS[state.copilot]?.color ?? 0xffd9a0;
-  if (hub.mascotColor !== color) {
-    hub.mascotColor = color;
+  if (hub.mascotColor !== state.copilot) {
+    hub.mascotColor = state.copilot;
     disposeModel(hub.mascotHolder);
     hub.mascotHolder.clear();
-    hub.mascot = catMascot(color);
+    hub.mascot = catMascot(COPILOTS[state.copilot]?.color ?? 0xffd9a0, state.copilot);
     hub.mascotHolder.add(hub.mascot);
   }
 }
@@ -155,16 +155,22 @@ function hubLoop(now) {
   }
   // mascotte : idle crantée 12 fps (queue, tête, respiration) + saut au tap
   if (hub.mascot) {
-    const tq = Math.floor(now / 1000 * 12) / 12;
     const u = hub.mascot.userData;
-    u.tail.rotation.z = Math.sin(tq * Math.PI * 2 / 1.8) * 0.3;
-    u.head.rotation.z = Math.sin(tq * Math.PI * 2 / 3.4) * 0.07;
-    u.body.scale.y = 1.05 * (1 + Math.sin(tq * Math.PI * 2 / 2.6) * 0.02);
+    if (u.mixer) {
+      // le modèle d'artiste porte ses propres animations
+      u.mixer.update(Math.min(0.05, (now - (hub.lastNow || now)) / 1000));
+    } else {
+      const tq = Math.floor(now / 1000 * 12) / 12;
+      u.tail.rotation.z = Math.sin(tq * Math.PI * 2 / 1.8) * 0.3;
+      u.head.rotation.z = Math.sin(tq * Math.PI * 2 / 3.4) * 0.07;
+      u.body.scale.y = 1.05 * (1 + Math.sin(tq * Math.PI * 2 / 2.6) * 0.02);
+    }
     const since = now / 1000 - mascotState.jumpT;
     hub.mascot.position.y = since < 0.45
       ? Math.sin(Math.min(1, Math.floor(since / 0.45 * 12) / 12) * Math.PI) * 0.55
       : 0;
   }
+  hub.lastNow = now;
   const vFov = hub.camera.fov * Math.PI / 180;
   const hFov = 2 * Math.atan(Math.tan(vFov / 2) * hub.camera.aspect);
   const dist = Math.max(5.6 / (2 * Math.tan(hFov / 2)), 7);
@@ -213,6 +219,7 @@ function mascotPhrase() {
 }
 function pokeMascot() {
   mascotState.jumpT = performance.now() / 1000;
+  hub?.mascot?.userData?.poke?.(); // le vrai chat danse
   sfxMeow();
   haptic();
   const bubble = document.getElementById('mascot-bubble');
@@ -257,7 +264,9 @@ function runLoading() {
     LOAD_TIPS[Math.floor(Math.random() * LOAD_TIPS.length)];
   const t0 = performance.now();
   let ready = false;
-  Promise.resolve(document.fonts?.ready).then(() => {
+  // les modèles 3D du jeu se chargent PENDANT l'écran de chargement :
+  // tout le reste du code les utilise ensuite de façon synchrone
+  Promise.all([Promise.resolve(document.fonts?.ready), preloadAssets()]).then(() => {
     ensureHub();
     refreshHubModels();
     ready = true;

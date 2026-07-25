@@ -1,10 +1,20 @@
 // Service worker : jeu 100% jouable hors-ligne, mises à jour propagées.
-const CACHE = 'maks-v15';
+const CACHE = 'maks-v16';
 const ASSETS = [
+  // modèles 3D (Kenney, CC0)
+  'models/car/body-classic.glb', 'models/car/body-pony.glb', 'models/car/body-surfer.glb',
+  'models/car/body-titan.glb', 'models/car/body-whale.glb', 'models/car/debris-bolt.glb',
+  'models/car/debris-bumper.glb', 'models/car/debris-door.glb', 'models/car/debris-drivetrain.glb',
+  'models/car/debris-nut.glb', 'models/car/debris-plate-a.glb', 'models/car/debris-spoiler-a.glb',
+  'models/car/debris-tire.glb', 'models/car/wheel-basic.glb', 'models/car/wheel-big.glb',
+  'models/car/wheel-spiked.glb', 'models/car/wheel-tiny.glb', 'models/car/Textures/colormap.png',
+  'models/pets/cat-pixel.glb', 'models/pets/cat-ronron.glb', 'models/pets/cat-tigrou.glb',
+  'models/pets/cat-zigzag.glb', 'models/pets/Textures/colormap.png',
   '.', 'index.html', 'css/style.css',
   'js/main.js', 'js/data.js', 'js/state.js', 'js/car.js', 'js/garage.js', 'js/battle.js', 'js/sfx.js',
-  'js/render3d.js', 'js/models3d.js', 'js/thumbs.js',
+  'js/render3d.js', 'js/models3d.js', 'js/thumbs.js', 'js/assets.js',
   'js/lib/matter.min.js', 'js/lib/three.module.min.js',
+  'js/lib/GLTFLoader.js', 'js/lib/SkeletonUtils.js',
   'js/lib/postprocessing/EffectComposer.js', 'js/lib/postprocessing/RenderPass.js',
   'js/lib/postprocessing/ShaderPass.js', 'js/lib/postprocessing/UnrealBloomPass.js',
   'js/lib/postprocessing/Pass.js', 'js/lib/postprocessing/MaskPass.js', 'js/lib/postprocessing/OutputPass.js',
