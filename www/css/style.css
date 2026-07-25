@@ -1982,3 +1982,21 @@ body {
 #app.with-tabs .screen { padding-bottom: calc(64px + var(--sab)); }
 #app.with-tabs .tabbar { padding-bottom: calc(8px + var(--sab)); }
 #app.with-tabs #screen-hub .hub-bottom { padding-bottom: 12px; }
+
+
+/* ---------- halo derrière les vignettes de pièces ----------
+   Une pièce sombre sur une carte d'acier sombre disparaît : on lui pose
+   un halo chaud dessous, comme une pièce posée sous la baladeuse. */
+.inv-item, .slot, .part-thumb-lg, .shop-card img, .crate-part img {
+  position: relative;
+}
+.inv-item img, .slot img, .part-thumb-lg img {
+  position: relative; z-index: 1;
+}
+.inv-item::before, .slot.filled::before, .part-thumb-lg::before {
+  content: ''; position: absolute; left: 50%; top: 38%;
+  width: 78%; padding-bottom: 78%; transform: translate(-50%, -50%);
+  border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(255,168,74,.26) 0%, rgba(255,140,40,.10) 45%, transparent 70%);
+}
+.part-thumb-lg::before { top: 46%; width: 88%; padding-bottom: 88%; }

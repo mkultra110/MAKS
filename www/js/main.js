@@ -233,7 +233,7 @@ function renderHub() {
   document.getElementById('hub-coins').textContent = state.coins;
   document.getElementById('profile-name').textContent = pName();
   document.getElementById('profile-level').textContent = 'NIV. ' + (1 + Math.floor(state.totalWins / 5));
-  document.getElementById('profile-avatar').src = avatarThumb(COPILOTS[state.copilot]?.color ?? 0xffd9a0);
+  document.getElementById('profile-avatar').src = avatarThumb(COPILOTS[state.copilot]?.color ?? 0xffd9a0, state.copilot);
   document.getElementById('hub-medals').innerHTML =
     `<svg class="ic"><use href="#i-medal"/></svg>${state.medals.length}/${MEDALS_TO_ADVANCE}`;
   document.getElementById('hub-fight-label').textContent = `COMBATTRE · Ét. ${state.stage}`;
@@ -687,7 +687,7 @@ function renderSettings() {
 }
 
 function renderProfile() {
-  document.getElementById('profile-img').src = avatarThumb(COPILOTS[state.copilot]?.color ?? 0xffd9a0);
+  document.getElementById('profile-img').src = avatarThumb(COPILOTS[state.copilot]?.color ?? 0xffd9a0, state.copilot);
   document.getElementById('profile-input').value = pName();
   const li = leagueIndex(state.stage);
   const rows = [

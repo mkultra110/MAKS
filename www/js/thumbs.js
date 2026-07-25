@@ -4,6 +4,7 @@ import { createRenderer, disposeModel, toonGradient, INK } from './render3d.js';
 import { createPartModel, createCarModel, poseCarStatic, catHead } from './models3d.js';
 import { buildCarSpec } from './car.js';
 import { COPILOTS } from './data.js';
+import { cloneAsset, hasAsset, assetInfo } from './assets.js';
 
 let renderer = null, scene = null, camera = null, holder = null, podium = null;
 const cache = new Map();
@@ -25,6 +26,11 @@ function ensure() {
   const fill = new THREE.DirectionalLight(0xFFB870, 0.45); // appoint ambré : ancre la pièce dans la DA
   fill.position.set(-5, 2, 3);
   scene.add(fill);
+  // liseré arrière : détache la silhouette des pièces sombres (pneus, blindages)
+  // sur les cartes d'acier — sans lui, elles disparaissent dans le fond
+  const rim = new THREE.DirectionalLight(0xFFF0D8, 1.15);
+  rim.position.set(-2, 5, -7);
+  scene.add(rim);
   podium = new THREE.Group();
   const top = new THREE.Mesh(
     new THREE.CylinderGeometry(2.6, 2.8, 0.3, 40),
@@ -62,12 +68,24 @@ function snapshot(model, fit, { w = 320, h = 240, podiumY = null, lookY = null }
   return url;
 }
 
-// Portrait d'un chat (co-pilotes, avatars des adversaires).
-export function avatarThumb(color) {
-  const key = `avatar:${color}`;
+// Portrait d'un chat (co-pilotes, profil). `id` donne accès au vrai modèle.
+export function avatarThumb(color, id = null) {
+  const key = `avatar:${id || color}`;
   if (cache.has(key)) return cache.get(key);
-  const head = catHead(0.55, color);
   const g = new THREE.Group();
+  const glb = id && hasAsset('cat:' + id) ? cloneAsset('cat:' + id) : null;
+  if (glb) {
+    const info = assetInfo('cat:' + id);
+    const s = 1.2 / info.size.y;
+    glb.children[0].scale.setScalar(s);
+    glb.children[0].position.multiplyScalar(s);
+    glb.rotation.y = 0.35; // trois quarts : on voit le museau et le profil
+    g.add(glb);
+    const url = snapshot(g, 1.5, {});
+    cache.set(key, url);
+    return url;
+  }
+  const head = catHead(0.55, color);
   g.add(head);
   head.position.y = 0.06;
   head.rotation.y = 0.4; // visage tourné vers la caméra
@@ -77,7 +95,7 @@ export function avatarThumb(color) {
 }
 
 export function copilotThumb(id) {
-  return avatarThumb(COPILOTS[id].color);
+  return avatarThumb(COPILOTS[id].color, id);
 }
 
 // Vignette d'une pièce (cachée par type/peinture — le niveau ne change pas le visuel).
