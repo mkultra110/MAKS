@@ -1391,10 +1391,15 @@ body {
 }
 @keyframes roster-in { from { transform: translateY(18px) scale(.9); opacity: 0; } }
 .roster-card:active { transform: scale(.96); }
+/* PUITS ÉCLAIRÉ — une machine à silhouette sombre posée sur une carte d'acier
+   sombre ne se voit pas. Ici elle repose dans une alcôve éclairée, et elle est
+   CONTENUE, pas recadrée : `cover` coupait les roues et les armes. */
 .roster-card img {
-  width: 58px; height: 44px; flex-shrink: 0; object-fit: cover; border-radius: 8px;
-  background: linear-gradient(180deg, #241E19, #0F0D0B);
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,.75), 0 2px 5px -2px #000;
+  width: 62px; height: 46px; flex-shrink: 0; object-fit: contain;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  background: radial-gradient(84% 82% at 50% 0%, rgba(255,192,116,.34), rgba(255,150,60,.08) 58%, transparent 86%),
+    linear-gradient(180deg, #453A32 0%, #2C2620 48%, #17130F 100%);
+  box-shadow: inset 0 2px 0 rgba(255,228,188,.34), inset 0 0 0 1px rgba(0,0,0,.75), 0 2px 5px -2px #000;
 }
 .roster-card .rc-name {
   font-size: 12.5px; font-weight: 800; color: var(--cream);
@@ -1955,8 +1960,16 @@ body {
   background-position: 7px 50%, calc(100% - 7px) 50%;
   opacity: .8;
 }
-.shop-card img { width: 74px; height: 52px; flex: none; object-fit: contain;
-  filter: drop-shadow(0 4px 5px rgba(0,0,0,.9)); }
+/* PUITS ÉCLAIRÉ : une pièce à silhouette sombre sur une carte d'acier sombre
+   ne se voit pas — c'est le même correctif que dans le rail et le championnat. */
+.shop-card img {
+  width: 76px; height: 56px; flex: none; object-fit: contain; padding: 2px;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  background: radial-gradient(84% 82% at 50% 0%, rgba(255,192,116,.34), rgba(255,150,60,.08) 58%, transparent 86%),
+    linear-gradient(180deg, #453A32 0%, #2C2620 48%, #17130F 100%);
+  box-shadow: inset 0 2px 0 rgba(255,228,188,.34), inset 0 0 0 1px rgba(0,0,0,.75);
+  filter: drop-shadow(0 3px 4px rgba(0,0,0,.85));
+}
 .shop-card.copilot img {
   width: 54px; height: 54px; border-radius: 50%; object-fit: cover;
   background: radial-gradient(circle at 42% 24%, #7A4E24, #301D0F 72%);
@@ -2018,17 +2031,18 @@ body {
 /* planche d'autocollants de la boutique */
 .sticker-shop { display: flex; flex-wrap: wrap; gap: 14px; padding: 6px 2px 14px; }
 .sticker-swatch.big {
-  width: 58px; height: 58px; border-radius: 12px;
+  width: 62px; height: 66px; padding-bottom: 13px;
   font-size: 20px; font-weight: 800; color: var(--cream);
   text-shadow: 0 2px 0 rgba(0,0,0,.85);
 }
-.sticker-swatch.big img { width: 44px; height: 44px; }
+.sticker-swatch.big img { width: 42px; height: 42px; }
 .sticker-swatch.big.owned {
   box-shadow: inset 0 2px 0 rgba(255,255,255,.14), inset 0 -2px 0 rgba(0,0,0,.55),
     inset 0 0 0 1.5px rgba(0,0,0,.7), 0 0 0 2px var(--ok), 0 0 14px -3px rgba(150,220,60,.6);
 }
+/* le prix vit DANS la plaque : posé dessous, la découpe le tranchait */
 .sticker-swatch.big .sticker-price {
-  position: absolute; bottom: -9px; left: 50%; transform: translateX(-50%);
+  position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
   padding: 1px 8px 2px; border-radius: 5px; white-space: nowrap;
   font-size: 10px; font-weight: 800; color: #1B1206;
   background: linear-gradient(180deg, #FFE685, #FFC400 60%, #A87500);
@@ -2318,3 +2332,24 @@ body {
 
 /* rappel : le cadran d'énergie est le SEUL rond assumé de l'interface */
 .dial, .dial-ticks, .dial-core { border-radius: 50%; clip-path: none; }
+
+/* ---------------------------------------------------------------------------
+   LE PUITS ÉCLAIRÉ — appliqué à TOUTES les vignettes du jeu.
+   Un pneu Kenney est noir ; une carrosserie carbone aussi. Posées sur une carte
+   d'acier sombre, elles disparaissent purement et simplement. Elles reposent
+   donc partout dans la même alcôve : radial ambré en haut, biseau clair,
+   ombre elliptique au sol. C'est le correctif le plus rentable de l'interface :
+   il rend visible du contenu qui existait déjà.
+   --------------------------------------------------------------------------- */
+.inv-item img, #reward-img, .part-thumb-lg, .crate-part img, .bet-card img {
+  background: radial-gradient(84% 82% at 50% 0%, rgba(255,192,116,.38), rgba(255,150,60,.09) 58%, transparent 86%),
+    linear-gradient(180deg, #473C33 0%, #2E2822 48%, #17130F 100%);
+  box-shadow: inset 0 2px 0 rgba(255,228,188,.40), inset 0 -2px 0 rgba(0,0,0,.9),
+    inset 0 0 0 1px rgba(0,0,0,.75);
+}
+.inv-item img, #reward-img, .crate-part img, .bet-card img {
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+}
+.inv-item img { padding: 3px 2px; height: 52px; }
+#reward-img { padding: 4px; object-fit: contain; }
+.crate-part img { padding: 2px; object-fit: contain; }

@@ -388,10 +388,12 @@ function renderRoster() {
     el.className = 'roster-card' + (beaten ? ' beaten' : '') + (diff ? ' ' + diff : '')
       + (!beaten && opp.idx === nextIdx ? ' next' : '');
     el.style.animationDelay = (i * 0.045) + 's';
-    // la MACHINE adverse (pas juste l'avatar), sur fond teinté à la couleur du chat
+    // la MACHINE adverse, posée dans son puits éclairé. Pas de fond teinté à la
+    // couleur du chat : quatorze teintes arbitraires empêchaient de comparer la
+    // seule chose qui compte ici, les machines elles-mêmes.
     const img = document.createElement('img');
-    img.src = carSnapshot(opp.loadout, { dir: -1, w: 128, h: 96 });
-    img.style.background = '#' + opp.avatar.toString(16).padStart(6, '0') + '55';
+    img.src = carSnapshot(opp.loadout, { dir: -1, w: 128, h: 96, podium: false });
+    img.alt = opp.name;
     el.appendChild(img);
     const info = document.createElement('div');
     info.style.minWidth = '0';

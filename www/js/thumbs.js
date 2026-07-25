@@ -31,18 +31,27 @@ function ensure() {
   const rim = new THREE.DirectionalLight(0xFFF0D8, 1.15);
   rim.position.set(-2, 5, -7);
   scene.add(rim);
+  // Le podium est le MÊME objet que le pont élévateur du garage : une plaque
+  // d'acier à liseré ambré. Un disque orange plein volait la vedette à la
+  // machine et se lisait comme une flaque de peinture.
   podium = new THREE.Group();
   const top = new THREE.Mesh(
-    new THREE.CylinderGeometry(2.6, 2.8, 0.3, 40),
-    new THREE.MeshToonMaterial({ color: 0xFF8A1F, gradientMap: toonGradient() })
+    new THREE.CylinderGeometry(2.6, 2.72, 0.26, 40),
+    new THREE.MeshToonMaterial({ color: 0x3C3630, gradientMap: toonGradient() })
   );
+  const led = new THREE.Mesh(
+    new THREE.TorusGeometry(2.7, 0.05, 6, 48),
+    new THREE.MeshBasicMaterial({ color: 0xFF8A1F })
+  );
+  led.rotation.x = Math.PI / 2;
+  led.position.y = -0.14;
   // socle sombre : le podium garde un contour même en vignette
   const skirt = new THREE.Mesh(
-    new THREE.CylinderGeometry(2.84, 2.84, 0.08, 40),
+    new THREE.CylinderGeometry(2.8, 2.8, 0.08, 40),
     new THREE.MeshBasicMaterial({ color: 0x0B0907 })
   );
-  skirt.position.y = -0.14;
-  podium.add(top, skirt);
+  skirt.position.y = -0.2;
+  podium.add(top, led, skirt);
   scene.add(podium);
   camera = new THREE.PerspectiveCamera(32, 320 / 240, 0.1, 100);
   holder = new THREE.Group();
@@ -119,11 +128,14 @@ const CAR_CACHE_MAX = 16;
 const carCache = new Map();
 const carPartKey = p => p ? `${p.type}.${p.stars || 0}.${p.level || 0}` : '';
 
-export function carSnapshot(loadout, { dir = 1, w = 560, h = 320 } = {}) {
+// `podium` : le socle orange n'a de sens que sur une grande carte. Répété
+// quatorze fois dans une liste d'adversaires, il devient quatorze taches
+// identiques qui masquent la seule chose à comparer — les machines.
+export function carSnapshot(loadout, { dir = 1, w = 560, h = 320, podium = true } = {}) {
   const key = `car:${carPartKey(loadout.body)}:${loadout.body?.sticker || ''}` +
     `:${(loadout.wheels || []).map(carPartKey).join(',')}` +
     `:${(loadout.weapons || []).map(carPartKey).join(',')}` +
-    `:${(loadout.gadgets || []).map(carPartKey).join(',')}:${dir}:${w}x${h}`;
+    `:${(loadout.gadgets || []).map(carPartKey).join(',')}:${dir}:${w}x${h}:${podium ? 1 : 0}`;
   if (carCache.has(key)) {
     // LRU : remonte l'entrée en tête de file
     const url = carCache.get(key);
@@ -137,7 +149,7 @@ export function carSnapshot(loadout, { dir = 1, w = 560, h = 320 } = {}) {
   if (model.userData.blob) model.userData.blob.visible = false; // trop boueux en vignette
   const fit = Math.max(spec.body.w * 0.02 * 1.55, 2.2);
   model.rotation.y = dir === 1 ? -0.55 : Math.PI + 0.55;
-  const url = snapshot(model, fit, { w, h, podiumY: 0, lookY: fit * 0.16 });
+  const url = snapshot(model, fit, { w, h, podiumY: podium ? 0 : null, lookY: fit * 0.16 });
   if (carCache.size >= CAR_CACHE_MAX) carCache.delete(carCache.keys().next().value); // évince le plus ancien
   carCache.set(key, url);
   return url;

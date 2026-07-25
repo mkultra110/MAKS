@@ -1,5 +1,5 @@
 // Service worker : jeu 100% jouable hors-ligne, mises à jour propagées.
-const CACHE = 'maks-v19';
+const CACHE = 'maks-v20';
 const ASSETS = [
   // modèles 3D (Kenney, CC0)
   'models/car/body-classic.glb', 'models/car/body-pony.glb', 'models/car/body-surfer.glb',
