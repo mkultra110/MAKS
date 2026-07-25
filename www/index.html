@@ -141,30 +141,28 @@
         <div id="garage-toast" class="garage-toast hidden"></div>
       </div>
       <div class="console">
-        <!-- LE chiffre de verdict : « ma machine est-elle bonne ? » -->
-        <div class="pw">
-          <div class="stencil">Puissance</div>
-          <div class="pw-val">
-            <b id="stat-power">0</b>
-            <span id="stat-power-delta" class="delta hidden"></span>
+        <div class="console-top">
+          <!-- LE chiffre de verdict : « ma machine est-elle bonne ? » -->
+          <div class="pw">
+            <div class="stencil">Puissance</div>
+            <div class="pw-val">
+              <b id="stat-power">0</b>
+              <span id="stat-power-delta" class="delta hidden"></span>
+            </div>
+          </div>
+          <i class="seam"></i>
+          <div class="reads">
+            <div class="read hp"><span class="stencil">PV</span><b id="stat-hp">0</b><div class="rbar"><u id="bar-hp"></u></div></div>
+            <div class="read atk"><span class="stencil">ATQ</span><b id="stat-atk">0</b><div class="rbar"><u id="bar-atk"></u></div></div>
           </div>
         </div>
-        <i class="seam"></i>
-        <div class="reads">
-          <div class="read hp"><span class="stencil">PV</span><b id="stat-hp">0</b><div class="rbar"><u id="bar-hp"></u></div></div>
-          <div class="read atk"><span class="stencil">ATQ</span><b id="stat-atk">0</b><div class="rbar"><u id="bar-atk"></u></div></div>
-        </div>
-        <i class="seam"></i>
-        <!-- L'énergie est la SEULE contrainte de montage : elle a droit à un
-             instrument à elle, avec sa zone rouge, pas à une pastille. -->
-        <div class="dial" id="energy-dial">
-          <i class="dial-ticks"></i>
-          <i class="dial-lim"></i>
-          <i class="dial-needle"></i>
-          <div class="dial-core">
-            <div class="dial-txt"><span id="stat-energy">0/0</span></div>
-            <div class="dial-cap stencil">NRJ</div>
-          </div>
+        <!-- L'ÉNERGIE est la seule contrainte DURE du montage : elle occupe une
+             ligne entière, avec un cran par point et une zone rouge hachurée
+             au-delà de la limite. Le joueur voit sa marge, il ne la calcule pas. -->
+        <div class="nrj" id="energy-dial">
+          <span class="stencil">Énergie</span>
+          <div class="nrj-track" id="energy-track"></div>
+          <span class="nrj-val"><b id="stat-energy">0/0</b></span>
         </div>
       </div>
     </div>
@@ -190,7 +188,7 @@
     <footer class="actions">
       <button id="btn-quick" class="btn tool"><svg class="ic"><use href="#i-dice"/></svg><span>Rapide</span></button>
       <button id="btn-bet" class="btn tool"><svg class="ic"><use href="#i-coin"/></svg><span>Paris</span></button>
-      <button id="btn-fight" class="btn primary"><svg class="ic"><use href="#i-trophy"/></svg> CHAMPIONNAT</button>
+      <button id="btn-fight" class="btn primary"><span class="btn-main"><svg class="ic"><use href="#i-trophy"/></svg> CHAMPIONNAT</span><small id="fight-sub"></small></button>
     </footer>
   </section>
 

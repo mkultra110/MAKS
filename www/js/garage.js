@@ -234,7 +234,6 @@ export function machinePower(stats) {
   return Math.round(stats.hp + stats.atk * 3);
 }
 let lastPower = null, bestHp = 1, bestAtk = 1;
-const DIAL_START = 210, DIAL_SPAN = 300; // manomètre : arc de 300° ouvert en bas
 
 // Numéro de série lisible et stable, dérivé de l'identifiant de la pièce.
 function serialOf(id) {
@@ -280,17 +279,18 @@ export function renderGarage() {
   document.getElementById('bar-hp').style.width = (stats.hp / Math.max(1, bestHp) * 100) + '%';
   document.getElementById('bar-atk').style.width = (stats.atk / Math.max(1, bestAtk) * 100) + '%';
 
-  // LE CADRAN D'ÉNERGIE : arc rempli, aiguille, repère de limite, zone rouge.
-  // L'échelle dépasse la limite d'un tiers pour que le dépassement soit VISIBLE
-  // au lieu d'être simplement « en butée ».
-  const dial = document.getElementById('energy-dial');
+  // LA JAUGE D'ÉNERGIE : un cran par point. Les crans au-delà de la capacité du
+  // châssis sont hachurés en rouge — le dépassement se voit avant de se lire.
   document.getElementById('stat-energy').textContent = `${stats.used}/${stats.capacity}`;
-  const scale = Math.max(stats.capacity * 1.33, stats.used, 1);
-  const fill = Math.min(stats.used / scale, 1) * DIAL_SPAN;
-  dial.style.setProperty('--f', fill.toFixed(1) + 'deg');
-  dial.style.setProperty('--a', (DIAL_START + fill).toFixed(1) + 'deg');
-  dial.style.setProperty('--l', (DIAL_START + (stats.capacity / scale) * DIAL_SPAN).toFixed(1) + 'deg');
-  dial.classList.toggle('over', over);
+  const track = document.getElementById('energy-track');
+  track.innerHTML = '';
+  const total = Math.max(stats.capacity, stats.used, 1);
+  for (let i = 0; i < total; i++) {
+    const seg = document.createElement('i');
+    seg.className = 'eseg' + (i < stats.used ? (i >= stats.capacity ? ' over' : ' on') : '');
+    track.appendChild(seg);
+  }
+  document.getElementById('energy-dial').classList.toggle('over', over);
 
   const warning = document.getElementById('energy-warning');
   const valid = loadoutValid(lo);
@@ -307,6 +307,9 @@ export function renderGarage() {
   }
   document.getElementById('btn-fight').disabled = !valid;
   document.getElementById('btn-quick').disabled = !valid;
+  // le bouton dit CONTRE QUI on part : « championnat » tout seul ne situait rien
+  const fightSub = document.getElementById('fight-sub');
+  if (fightSub) fightSub.textContent = `Étape ${state.stage} · ${state.medals.length}/${MEDALS_TO_ADVANCE} médailles`;
 
   refreshPreviewModel(lo);
   startPreview();
@@ -460,32 +463,44 @@ function renderInventory() {
     nm.className = 'nm';
     nm.textContent = partDef(p).name;
     el.appendChild(nm);
-    const st = document.createElement('div');
-    st.className = 'st';
-    st.textContent = '★'.repeat(p.stars);
-    el.appendChild(st);
+    // La rareté n'est plus une chaîne d'étoiles : c'est une BANDE GRADUÉE sur le
+    // chant de la carte, dans la couleur du palier — la même que la machine
+    // porte en 3D. Elle ne coûte pas une ligne de texte, et elle se compare
+    // d'un coup d'œil entre deux cartes voisines.
+    const rar = document.createElement('div');
+    rar.className = 'rar';
+    for (let k = 0; k < 5; k++) {
+      const n = document.createElement('i');
+      if (k < p.stars) n.className = 'on';
+      rar.appendChild(n);
+    }
+    el.appendChild(rar);
     const lv = document.createElement('div');
     lv.className = 'lv';
     lv.textContent = 'Nv ' + p.level;
     el.appendChild(lv);
-    // VERDICT CHIFFRÉ contre la pièce déjà montée : c'est la seule décision que
-    // le joueur a à prendre ici, elle mérite un nombre, pas un chevron muet.
     const [sk, sv] = partStats(p)[0];
     const ms = document.createElement('div');
     ms.className = 'ms';
     ms.textContent = `${sk} ${sv}`;
+    el.appendChild(ms);
+    // VERDICT en bandeau pleine largeur : c'est la seule décision que le joueur
+    // a à prendre ici. Un petit chevron collé à la stat ne se voyait pas.
     const eq = eqByKind[p.kind];
-    if (eq && eq.id !== p.id) {
+    const band = document.createElement('div');
+    if (isEquipped(p.id)) {
+      band.className = 'vband on';
+      band.textContent = 'MONTÉ';
+    } else if (eq && eq.id !== p.id) {
       const a = parseFloat(sv), b = parseFloat(partStats(eq)[0][1]);
       if (Number.isFinite(a) && Number.isFinite(b) && a !== b) {
-        const vd = document.createElement('span');
-        vd.className = 'vd ' + (a > b ? 'up' : 'dn');
-        const gap = Math.round(Math.abs(a - b) * (Number.isInteger(a) && Number.isInteger(b) ? 1 : 10)) / (Number.isInteger(a) && Number.isInteger(b) ? 1 : 10);
-        vd.textContent = ` ${a > b ? '▲' : '▼'}${gap}`;
-        ms.appendChild(vd);
+        const dec = Number.isInteger(a) && Number.isInteger(b) ? 1 : 10;
+        const gap = Math.round(Math.abs(a - b) * dec) / dec;
+        band.className = 'vband ' + (a > b ? 'up' : 'dn');
+        band.textContent = `${a > b ? '▲' : '▼'} ${gap}`;
       }
     }
-    el.appendChild(ms);
+    if (band.className) el.appendChild(band);
     el.addEventListener('click', () => { sfxClick(); openSheet(p); });
     inv.appendChild(el);
   }
@@ -598,9 +613,17 @@ function openSheet(part) {
   btnEquip.disabled = equipped && part.kind === 'body';
 
   const btnUp = document.getElementById('btn-upgrade');
-  // hiérarchie : l'action primaire domine (équiper si pas équipée, sinon améliorer)
-  btnEquip.className = equipped ? 'btn outline full' : 'btn primary full';
-  btnUp.className = equipped ? 'btn gold' : 'btn outline';
+  // HIÉRARCHIE BASCULANTE : sur une pièce à monter, l'action dominante est
+  // « équiper » ; sur une pièce déjà montée, c'est « améliorer ». Le bouton
+  // dominant n'est jamais celui qui défait ce que le joueur vient de faire.
+  const actions = document.querySelector('.sheet-actions');
+  const row = document.querySelector('.sheet-actions-row');
+  const primary = equipped ? btnUp : btnEquip;
+  const second = equipped ? btnEquip : btnUp;
+  btnEquip.className = equipped ? 'btn outline' : 'btn primary full';
+  btnUp.className = equipped ? 'btn gold full' : 'btn outline';
+  actions.insertBefore(primary, row);
+  row.insertBefore(second, row.firstChild);
   if (part.level >= maxLevel(part)) {
     btnUp.textContent = 'Niveau MAX';
     btnUp.disabled = true;
