@@ -689,144 +689,314 @@ body {
 .daily-banner.done .ic { color: var(--ok); }
 
 /* --- baie d'aperçu 3D : la fosse du garage --- */
-.preview-wrap {
-  position: relative; margin: 2px 12px; border-radius: 14px; overflow: hidden;
+/* ---------------------------------------------------------------------------
+   LA BAIE — la machine est la SEULE chose éclairée de l'écran, et la console
+   de mesure est SOUDÉE dessous. Les jauges ne flottent plus par-dessus un
+   rendu 3D sombre et mouvant : elles ont un socle opaque.
+   Vocabulaire : de la TÔLE DÉCOUPÉE. Aucun coin arrondi — des coins COUPÉS.
+   --------------------------------------------------------------------------- */
+.bay {
+  position: relative; margin: 6px 12px 0;
+  filter: drop-shadow(0 3px 0 rgba(0,0,0,.6)) drop-shadow(0 14px 22px rgba(0,0,0,.75));
+  clip-path: polygon(15px 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%, 0 15px);
   background: linear-gradient(180deg, #1B1618 0%, #121011 42%, #080808 76%, #0C0A09 100%);
-  box-shadow:
-    inset 0 2px 0 rgba(255,205,150,.14),
-    inset 0 -2px 0 rgba(0,0,0,.9),
-    inset 0 0 0 1px rgba(0,0,0,.75),
-    0 3px 0 rgba(0,0,0,.6), 0 14px 26px -14px #000;
 }
 /* rivets aux 4 coins de la baie */
-.preview-wrap::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 3;
-  border-radius: inherit;
+.bay::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 8;
   background-image: var(--rivet), var(--rivet), var(--rivet), var(--rivet);
   background-size: 9px 9px; background-repeat: no-repeat;
-  background-position: 8px 8px, calc(100% - 8px) 8px, 8px calc(100% - 8px), calc(100% - 8px) calc(100% - 8px);
+  background-position: 17px 6px, calc(100% - 8px) 8px, 8px calc(100% - 8px), calc(100% - 17px) calc(100% - 6px);
+}
+.preview-wrap {
+  position: relative; overflow: hidden;
+  box-shadow: inset 0 2px 0 rgba(255,205,150,.16), inset 0 0 0 1px rgba(0,0,0,.75);
 }
 #preview-canvas { width: 100%; height: 190px; display: block; }
 
-/* plaque de nom soudée en bas de la baie */
-.machine-name {
-  position: absolute; bottom: 9px; left: 9px; z-index: 4; pointer-events: none;
-  padding: 5px 11px 6px; border-radius: 9px;
-  font-size: 13px; font-weight: 800; letter-spacing: .045em; color: var(--cream);
-  text-shadow: 0 1px 0 rgba(0,0,0,.9);
-  background: linear-gradient(180deg, rgba(46,38,32,.96), rgba(20,16,13,.96));
-  box-shadow: inset 0 1px 0 var(--edge-hi), inset 0 -1px 0 rgba(0,0,0,.8),
-    inset 0 0 0 1px rgba(0,0,0,.6), 0 3px 8px -3px #000;
+/* ORDRE DE MISSION — le défi du jour était une dalle jaune pleine largeur qui
+   volait la vedette à la machine. C'est maintenant une fiche épinglée DANS la
+   baie : visible, mais jamais le point le plus lumineux de l'écran. */
+.order {
+  position: absolute; top: 8px; left: 9px; right: 9px; z-index: 7;
+  height: 30px; display: flex; align-items: center; gap: 8px;
+  padding: 0 9px 0 0; text-align: left; overflow: hidden; cursor: pointer;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
+  background: linear-gradient(180deg, rgba(38,31,25,.95), rgba(13,11,9,.95));
+  box-shadow: inset 0 1px 0 rgba(255,214,170,.18), inset 0 0 0 1px rgba(0,0,0,.7);
+}
+.order::before {
+  content: ''; width: 5px; align-self: stretch; flex: 0 0 5px;
+  background: linear-gradient(180deg, #FFE685, #FFC400 46%, #B85D00);
+  box-shadow: 0 0 8px rgba(255,175,40,.5);
+}
+.order::after { content: ''; position: absolute; inset: -8px; } /* cible tactile 46px */
+.order-txt {
+  flex: 1; min-width: 0; padding-left: 2px;
+  font-size: 11.5px; font-weight: 700; color: var(--cream-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.order-txt b {
+  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 11px;
+  letter-spacing: .08em; color: var(--signal); margin-right: 6px;
+}
+.order-prog {
+  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 13px;
+  color: var(--signal-hi); font-variant-numeric: tabular-nums;
 }
 
-.car-stats {
-  position: absolute; top: 8px; left: 8px; z-index: 4;
-  display: flex; flex-direction: column; gap: 6px; pointer-events: none;
+/* PLAQUE DE NOM gravée + numéro de série : le micro-détail qui signe */
+.plate {
+  position: absolute; left: 10px; bottom: 9px; z-index: 7; pointer-events: none;
+  display: flex; align-items: baseline; gap: 9px; padding: 5px 12px 6px;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  background: linear-gradient(180deg, rgba(52,43,36,.96), rgba(18,15,12,.96));
+  box-shadow: inset 0 1.5px 0 var(--edge-hi), inset 0 -1.5px 0 rgba(0,0,0,.85),
+    inset 0 0 0 1px rgba(0,0,0,.6);
 }
-.stat {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 3px 10px 4px; border-radius: 8px;
-  font-size: 13px; font-weight: 800; color: var(--cream);
+.plate b {
+  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 14px;
+  letter-spacing: .05em; color: var(--cream); line-height: 1.05; white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(0,0,0,.9);
+}
+.plate small {
+  font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 11px;
+  letter-spacing: .12em; color: var(--muted); white-space: nowrap;
+}
+
+/* --- LA CONSOLE DE MESURE : le tableau de bord soudé sous la fosse --------- */
+.console {
+  position: relative; display: flex; align-items: center; gap: 11px;
+  height: 74px; padding: 0 11px;
+  background: var(--diamond), linear-gradient(180deg, #221D19, #131010);
+  background-size: 18px 18px, 18px 18px, auto;
+  box-shadow: inset 0 1.5px 0 rgba(255,205,150,.16), inset 0 -2px 0 rgba(0,0,0,.9);
+}
+.console::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+  background-image: repeating-linear-gradient(90deg, rgba(255,206,158,.22) 0 3px, rgba(0,0,0,.45) 3px 7px);
+  box-shadow: 0 1px 0 rgba(0,0,0,.75);
+}
+.seam {
+  width: 2px; align-self: stretch; margin: 12px 0; flex: 0 0 2px;
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,.85) 20%, rgba(0,0,0,.85) 80%, transparent);
+  box-shadow: 1px 0 0 rgba(255,214,170,.10);
+}
+.stencil {
+  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 11px;
+  line-height: 1; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--muted); text-shadow: 0 1px 0 rgba(255,214,170,.07);
+}
+
+/* LA PUISSANCE : le chiffre qui répond à « ma machine est-elle bonne ? ».
+   Il n'existait aucune synthèse dans le garage — le joueur devait comparer
+   trois nombres pour trancher une seule question. */
+.pw { flex: 1; min-width: 0; }
+.pw-val { display: flex; align-items: baseline; gap: 7px; margin-top: 3px; }
+.pw-val b {
+  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 32px;
+  line-height: .92; letter-spacing: -.01em; color: var(--cream);
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 1px 0 rgba(0,0,0,.9);
-  background: linear-gradient(180deg, rgba(40,33,27,.94), rgba(14,11,9,.94));
-  box-shadow: inset 0 1px 0 rgba(255,214,170,.18), inset 0 0 0 1px rgba(0,0,0,.65),
-    0 3px 8px -4px #000;
+  text-shadow: 0 2px 0 #0E0A08, 0 3px 0 rgba(0,0,0,.85), 0 0 18px rgba(255,138,31,.45);
 }
+.delta {
+  display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px 3px;
+  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+.delta.up { color: var(--ok-hi); background: rgba(62,122,18,.30); box-shadow: inset 0 0 0 1px rgba(149,219,59,.35); }
+.delta.dn { color: var(--bad-hi); background: rgba(138,17,3,.32); box-shadow: inset 0 0 0 1px rgba(255,59,34,.35); }
 
-/* pastille d'énergie : jauge segmentée jaune signalisation */
-.energy-pill {
-  position: absolute; right: 8px; top: 8px; z-index: 4;
-  display: flex; align-items: center; gap: 7px;
-  padding: 4px 10px 5px; border-radius: 8px;
-  font-size: 12.5px; font-weight: 800; color: var(--signal-hi);
-  font-variant-numeric: tabular-nums; text-shadow: 0 1px 0 rgba(0,0,0,.9);
-  background: linear-gradient(180deg, rgba(40,33,27,.94), rgba(14,11,9,.94));
-  box-shadow: inset 0 1px 0 rgba(255,214,170,.18), inset 0 0 0 1px rgba(0,0,0,.65),
-    0 3px 8px -4px #000;
+.reads { display: flex; flex-direction: column; gap: 8px; width: 92px; flex: 0 0 92px; }
+.read { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 6px; }
+.read b {
+  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 16px;
+  color: var(--cream); font-variant-numeric: tabular-nums; text-shadow: 0 1px 0 rgba(0,0,0,.9);
 }
-.energy-pill .ic { color: var(--signal); }
-/* le JS remplace le contenu par des .eseg : conteneur neutre */
-.energy-track {
-  display: flex; gap: 2px; min-width: 92px; height: 11px;
-  background: transparent !important; border: none !important; overflow: visible !important;
+.rbar {
+  grid-column: 1/-1; height: 5px; overflow: hidden;
+  background: linear-gradient(180deg, #0A0807, #191412);
+  box-shadow: inset 0 1.5px 3px rgba(0,0,0,.9), inset 0 0 0 1px rgba(0,0,0,.7),
+    0 1px 0 rgba(255,214,170,.08);
 }
-.eseg {
-  flex: 1; min-width: 5px; max-width: 14px; height: 100%; border-radius: 2px;
-  background: linear-gradient(180deg, #0A0807, #171310);
-  box-shadow: inset 0 1px 3px rgba(0,0,0,.9), inset 0 0 0 1px rgba(0,0,0,.8);
+.rbar u { display: block; height: 100%; text-decoration: none; transition: width .25s steps(5); }
+.read.hp .rbar u { background: linear-gradient(180deg, #FF9270, #FF3B22 55%, #8A1103); box-shadow: 0 0 7px rgba(255,60,30,.45); }
+.read.atk .rbar u { background: linear-gradient(180deg, #FFD680, #FF9A22 55%, #B8420A); box-shadow: 0 0 7px rgba(255,150,40,.45); }
+
+/* LE CADRAN D'ÉNERGIE — l'énergie est la SEULE contrainte de montage du jeu :
+   elle mérite un instrument, pas une pastille coincée dans un coin.
+   Le JS n'écrit que deux variables : --f (fin de l'arc) et --a (aiguille).
+   C'est un manomètre : il reste rond, à dessein. */
+.dial {
+  position: relative; width: 58px; height: 58px; flex: 0 0 58px; border-radius: 50%;
+  background: conic-gradient(from 210deg,
+    #FFE685 0deg, #FFB400 var(--f, 175deg), #17120E var(--f, 175deg),
+    #17120E 225deg, rgba(255,59,34,.42) 225deg, rgba(255,59,34,.42) 300deg, #1A1613 300deg);
+  box-shadow: inset 0 0 0 1.5px rgba(0,0,0,.85), 0 3px 7px -3px #000, 0 0 16px -4px rgba(255,175,40,.4);
 }
-.eseg.on {
-  background: linear-gradient(180deg, #FFE685, #FFC400 44%, #B85D00);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 0 7px rgba(255,175,40,.5);
+.dial.over {
+  background: conic-gradient(from 210deg,
+    #FFE685 0deg, #FFB400 225deg, #FF6A3C 225deg, #FF2E14 var(--f, 250deg),
+    #17120E var(--f, 250deg), #17120E 300deg, #1A1613 300deg);
+  box-shadow: inset 0 0 0 1.5px rgba(0,0,0,.85), 0 3px 7px -3px #000, 0 0 16px -4px rgba(255,70,30,.5);
 }
-.eseg.over {
-  background: linear-gradient(180deg, #FF9270, #FF3B22 46%, #8A1103);
-  box-shadow: inset 0 1px 0 rgba(255,220,205,.5), 0 0 7px rgba(255,60,30,.55);
+.dial-ticks {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: repeating-conic-gradient(from 210deg, rgba(0,0,0,.72) 0 1.6deg, transparent 1.6deg 25deg);
 }
-#energy-fill { height: 100%; width: 0%; background: var(--signal); transition: width .3s steps(4); }
-#energy-fill.over { background: var(--bad); }
+/* l'aiguille est posée AVANT le cadran : le noyau masque sa moitié interne,
+   il ne reste que la pointe dans l'anneau — comme un vrai manomètre */
+.dial-needle {
+  position: absolute; left: calc(50% - 1.5px); bottom: 50%; width: 3px; height: 29px; z-index: 2;
+  transform-origin: 50% 100%; transform: rotate(var(--a, 25deg));
+  background: linear-gradient(90deg, rgba(255,244,214,.95) 0 1px, #0E0A08 1px 100%);
+  box-shadow: 0 0 5px rgba(0,0,0,.9);
+  transition: transform .25s steps(5);
+}
+.dial.over .dial-needle { background: linear-gradient(90deg, rgba(255,236,226,.95) 0 1px, #160604 1px 100%); }
+.dial-lim {
+  position: absolute; left: calc(50% - 1px); bottom: 50%; width: 2px; height: 29px; z-index: 2;
+  transform-origin: 50% 100%; transform: rotate(var(--l, 45deg));
+  background: linear-gradient(180deg, var(--cream) 0 20%, transparent 20%);
+}
+.dial-core {
+  position: absolute; inset: 8px; border-radius: 50%; z-index: 3;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  background: linear-gradient(179deg, rgba(255,205,150,.10), transparent 45%), var(--brushed),
+    conic-gradient(from 210deg, #312A24, #1C1815 40%, #312A24 62%, #191512 100%);
+  box-shadow: inset 0 1.5px 0 var(--edge-hi), inset 0 -2px 0 rgba(0,0,0,.9),
+    inset 0 0 0 1px rgba(0,0,0,.7), 0 2px 5px -2px #000;
+}
+.dial-txt {
+  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 14px; line-height: 1;
+  color: var(--signal-hi); font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 0 #000, 0 0 8px rgba(255,180,40,.5);
+}
+.dial-cap { font-size: 10px; line-height: 1; letter-spacing: .12em; }
+.dial.over .dial-txt { color: var(--bad-hi); text-shadow: 0 1px 0 #000, 0 0 9px rgba(255,60,30,.6); }
 
 .energy-warning {
-  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); z-index: 5;
-  padding: 4px 12px 5px; border-radius: 8px;
+  margin: 7px 12px 0; padding: 5px 12px 6px; text-align: center;
   font-size: 11.5px; font-weight: 800; letter-spacing: .04em; color: #FFEDE6;
-  white-space: nowrap; max-width: 94%; overflow: hidden; text-overflow: ellipsis;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
   background: linear-gradient(180deg, #FF6A4A, #C11B06);
-  box-shadow: inset 0 1px 0 rgba(255,205,190,.6), inset 0 -1.5px 0 rgba(80,10,0,.6),
-    0 2px 0 rgba(0,0,0,.7), 0 0 14px -2px rgba(255,60,20,.5);
+  box-shadow: inset 0 1px 0 rgba(255,205,190,.6), inset 0 -1.5px 0 rgba(80,10,0,.6);
 }
 .garage-toast {
-  position: absolute; top: 42px; left: 50%; transform: translateX(-50%); z-index: 5;
-  padding: 6px 14px; border-radius: 9px;
+  position: absolute; top: 44px; left: 50%; transform: translateX(-50%); z-index: 9;
+  padding: 6px 14px;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
   font-size: 12px; font-weight: 800; color: var(--cream); white-space: nowrap;
   background: linear-gradient(180deg, rgba(44,36,29,.97), rgba(16,13,10,.97));
-  box-shadow: inset 0 1.5px 0 rgba(255,214,170,.22), inset 0 0 0 1px rgba(0,0,0,.7),
-    0 4px 12px -5px #000;
+  box-shadow: inset 0 1.5px 0 rgba(255,214,170,.22), inset 0 0 0 1px rgba(0,0,0,.7);
   animation: msg-pop .25s steps(3);
 }
 
-/* --- emplacements de pièces : logements creusés dans la tôle --- */
-.slots-row {
-  display: flex; gap: 7px; padding: 10px 12px 6px;
-  overflow-x: auto; scrollbar-width: none;
+/* ---------------------------------------------------------------------------
+   LE RAIL DE MONTAGE — un seul rang, JAMAIS de débordement horizontal
+   (l'ancienne rangée coupait « ARM… » et n'avait pour recours qu'un scroll).
+   Le co-pilote est séparé par un cordon de soudure et n'a pas la même
+   silhouette que les pièces : ce n'est pas une pièce, c'est quelqu'un.
+   --------------------------------------------------------------------------- */
+.mount { margin: 8px 12px 0; }
+.mount-head { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+.rule-line {
+  flex: 1; height: 1px;
+  background: linear-gradient(90deg, rgba(255,214,170,.14), transparent);
+  box-shadow: 0 1px 0 rgba(0,0,0,.7);
 }
-.slots-row::-webkit-scrollbar { display: none; }
+.rail {
+  position: relative; display: flex; align-items: flex-end; gap: 5px; padding: 7px;
+  background: linear-gradient(180deg, #0D0B09, #161211);
+  box-shadow: inset 0 3px 8px rgba(0,0,0,.92), inset 0 0 0 1px rgba(0,0,0,.75),
+    inset 0 -1px 0 rgba(255,205,150,.10), 0 1px 0 rgba(255,214,170,.07);
+}
+/* cordon de soudure : sépare l'humain du mécanique */
+.weld {
+  width: 3px; align-self: stretch; flex: 0 0 3px; margin: 2px 2px;
+  background: repeating-radial-gradient(circle at 50% 4px, rgba(255,206,150,.34) 0 1.6px, rgba(0,0,0,.7) 1.7px 3.4px);
+  background-size: 3px 7px; opacity: .75;
+}
 .slot {
-  position: relative; flex-shrink: 0;
-  min-width: 62px; height: 70px; border-radius: 11px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  font-size: 22px; font-weight: 800; color: rgba(247,233,210,.24);
-  background: linear-gradient(180deg, #100D0B, #181310);
+  position: relative; flex: 1; min-width: 0; height: 66px; padding: 4px 3px 0;
+  display: flex; flex-direction: column; align-items: center; cursor: pointer;
+  background: linear-gradient(180deg, #100D0B, #1A1512);
   box-shadow: inset 0 3px 7px rgba(0,0,0,.95), inset 0 -1.5px 0 rgba(255,205,150,.13),
     inset 0 0 0 1px rgba(0,0,0,.8), 0 1px 0 rgba(255,214,170,.09);
   transition: transform .07s steps(2);
 }
-/* logement vide : liseré pointillé, on voit qu'il manque une pièce */
-.slot::before {
-  content: ''; position: absolute; inset: 6px 6px 14px; border-radius: 7px;
-  border: 1.5px dashed rgba(247,233,210,.14); pointer-events: none;
-}
 .slot:active { transform: scale(.94); }
 .slot.filled {
-  background: linear-gradient(180deg, #14100E 0%, #1E1815 62%, #272019 100%);
-  box-shadow: inset 0 3px 7px rgba(0,0,0,.9), inset 0 -1.5px 0 rgba(255,205,150,.13),
-    inset 0 0 0 1.5px rgba(255,150,50,.22), inset 0 0 14px rgba(255,140,40,.10),
+  background: linear-gradient(180deg, #151110 0%, #211B17 62%, #2A231C 100%);
+  box-shadow: inset 0 2px 5px rgba(0,0,0,.85), inset 0 -1.5px 0 rgba(255,205,150,.15),
+    inset 0 0 0 1.5px var(--rc, rgba(255,150,50,.30)), inset 0 0 14px rgba(255,140,40,.10),
     0 1px 0 rgba(255,214,170,.09);
 }
-.slot.filled::before { display: none; }
-.slot img { width: 50px; height: 40px; object-fit: contain;
-  filter: drop-shadow(0 3px 3px rgba(0,0,0,.9)); }
-.slot .slot-tag {
-  position: absolute; bottom: 3px; left: 0; right: 0; text-align: center;
-  font-size: 8px; font-weight: 800; color: var(--muted);
-  text-shadow: 0 1px 0 rgba(0,0,0,.85);
+/* LE PUITS ÉCLAIRÉ : une vignette 3D à silhouette sombre posée sur une carte
+   d'acier sombre ne se voit pas. Ici elle repose dans une alcôve éclairée. */
+.slot-well {
+  position: relative; width: 100%; height: 42px; display: grid; place-items: center; overflow: hidden;
+  background: radial-gradient(80% 78% at 50% 0%, rgba(255,192,116,.42), rgba(255,150,60,.10) 56%, transparent 84%),
+    linear-gradient(180deg, #4E4339 0%, #332C26 46%, #1A1613 100%);
+  box-shadow: inset 0 2px 0 rgba(255,228,188,.46), inset 0 -2px 0 rgba(0,0,0,.9),
+    inset 0 0 0 1px rgba(0,0,0,.75);
 }
+.slot-well::after {
+  content: ''; position: absolute; left: 16%; right: 16%; bottom: 3px; height: 6px; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(0,0,0,.75), transparent 78%);
+}
+.slot-well img { width: 46px; height: 38px; object-fit: contain; filter: drop-shadow(0 3px 3px rgba(0,0,0,.9)); }
+/* LA SILHOUETTE ENCODE LE TYPE : un joueur doit reconnaître un logement d'arme
+   sans lire son étiquette. Les tests d'ergonomie du genre sont formels : la
+   couleur seule ne suffit pas à distinguer deux emplacements. */
+.slot.k-body  .slot-well { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); }
+.slot.k-wheel .slot-well { clip-path: circle(48% at 50% 50%); }
+.slot.k-weapon .slot-well { clip-path: polygon(50% 0, 100% 26%, 100% 74%, 50% 100%, 0 74%, 0 26%); }
+.slot.k-gadget .slot-well { clip-path: polygon(22% 0, 78% 0, 100% 22%, 100% 78%, 78% 100%, 22% 100%, 0 78%, 0 22%); }
+.slot-tag {
+  margin-top: 4px; font-family: 'Baloo 2', sans-serif; font-weight: 800;
+  font-size: 11px; line-height: 1; letter-spacing: .03em; text-transform: uppercase;
+  color: var(--muted); text-shadow: 0 1px 0 rgba(0,0,0,.9);
+}
+.slot.filled .slot-tag { color: var(--cream-2); }
+.slot-lv {
+  position: absolute; top: -5px; right: -3px; z-index: 3; padding: 1px 5px 2px;
+  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 11px; line-height: 1.15;
+  color: var(--cream);
+  background: linear-gradient(180deg, #3A322B, #151210);
+  box-shadow: inset 0 1px 0 rgba(255,214,170,.25), inset 0 0 0 1px rgba(0,0,0,.8), 0 2px 4px -2px #000;
+}
+/* logement vide : gorge nue + croix au pochoir, on VOIT qu'il manque une pièce */
+.slot.empty .slot-well {
+  background: linear-gradient(180deg, #0B0908, #141110);
+  box-shadow: inset 0 3px 8px rgba(0,0,0,.95), inset 0 0 0 1px rgba(0,0,0,.8);
+}
+.slot.empty .slot-well::before {
+  content: ''; position: absolute; inset: 5px;
+  border: 1.5px dashed rgba(247,233,210,.16);
+}
+.plus { position: relative; width: 16px; height: 16px; }
+.plus::before, .plus::after { content: ''; position: absolute; background: rgba(247,233,210,.30); }
+.plus::before { left: 7px; top: 0; width: 2px; height: 16px; }
+.plus::after { top: 7px; left: 0; height: 2px; width: 16px; }
+.slot.pilot { flex: 0 0 52px; background: none; box-shadow: none; padding: 0; align-items: center; }
+.pilot-medal {
+  position: relative; width: 50px; height: 50px; margin-top: 1px; border-radius: 50%;
+  display: grid; place-items: center; overflow: hidden;
+  background: radial-gradient(72% 70% at 50% 2%, rgba(255,196,120,.44), rgba(255,150,60,.10) 56%, transparent 82%),
+    conic-gradient(from 210deg, #4E443A, #2A231E 40%, #4E443A 62%, #261F1A 100%);
+  box-shadow: inset 0 2px 0 rgba(255,226,180,.42), inset 0 -2px 0 rgba(0,0,0,.9),
+    inset 0 0 0 2px rgba(255,150,50,.28), 0 3px 0 rgba(0,0,0,.7), 0 8px 14px -8px #000;
+}
+.pilot-medal img { width: 44px; height: 44px; object-fit: contain; }
+.slot.pilot .slot-tag { position: absolute; left: -4px; right: -4px; bottom: 1px; text-align: center; margin: 0; }
 
 /* --- sets d'équipement : plaquettes de soudure --- */
-.sets-row { display: flex; gap: 6px; padding: 0 12px; flex-wrap: wrap; min-height: 0; }
+.sets-row { display: flex; gap: 5px; flex-wrap: nowrap; overflow: hidden; }
 .set-chip {
-  padding: 3px 10px 4px; border-radius: 7px;
+  padding: 3px 9px 4px; white-space: nowrap;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
   font-size: 10.5px; font-weight: 800; letter-spacing: .06em; color: var(--muted);
   background: linear-gradient(180deg, rgba(34,28,24,.95), rgba(13,11,9,.95));
   box-shadow: inset 0 1px 0 rgba(255,214,170,.12), inset 0 0 0 1px rgba(0,0,0,.6);
@@ -836,38 +1006,45 @@ body {
   color: #8FE8FF;
   background: linear-gradient(180deg, rgba(24,42,50,.95), rgba(10,18,22,.95));
   box-shadow: inset 0 1px 0 rgba(150,235,255,.28), inset 0 0 0 1px rgba(0,0,0,.6),
-    inset 0 0 12px rgba(60,190,230,.16), 0 3px 8px -4px #000;
+    inset 0 0 12px rgba(60,190,230,.16);
   animation: msg-pop .3s steps(3);
 }
 
-/* --- onglets d'inventaire : sélecteur estampé --- */
+/* --- onglets d'inventaire : sélecteur estampé (icône + MOT + compte) ---
+   Une icône seule ne dit pas « roues » : l'ancien sélecteur demandait au
+   joueur de deviner quatre pictogrammes. */
 .inv-tabs {
-  display: flex; gap: 0; margin: 10px 12px 0; padding: 3px; border-radius: 11px;
+  display: flex; gap: 3px; margin: 9px 12px 0; padding: 3px;
   background: linear-gradient(180deg, #100D0B, #1A1512);
   box-shadow: inset 0 2px 5px rgba(0,0,0,.9), inset 0 0 0 1px rgba(0,0,0,.7),
     0 1px 0 rgba(255,214,170,.1);
 }
 .tab {
-  flex: 1; height: 34px; border: 0; border-radius: 8px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; gap: 5px;
-  font-size: 18px; font-weight: 800; letter-spacing: .06em; color: var(--muted);
+  position: relative; flex: 1; height: 40px; border: 0; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  font-family: 'Baloo 2', sans-serif; font-size: 11.5px; font-weight: 800;
+  letter-spacing: .05em; text-transform: uppercase; color: var(--muted);
   background: transparent;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
   transition: color .1s steps(2);
 }
-.tab .ic { width: 20px; height: 20px; }
+.tab .ic { width: 17px; height: 17px; flex: none; }
+.tab u { text-decoration: none; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* la zone tactile déborde le dessin : 40px vus, 48px touchables */
+.tab::after { content: ''; position: absolute; inset: -4px; }
 /* onglet actif : plaque chauffée */
 .tab.active {
   color: #2B1103;
   background: linear-gradient(180deg, #FFC968 0%, #FF9520 42%, #E0680B 100%);
-  box-shadow: inset 0 1.5px 0 rgba(255,246,214,.8), inset 0 -2px 0 rgba(90,28,0,.5),
-    0 2px 0 #572004, 0 3px 0 #000, 0 6px 12px -6px rgba(255,120,20,.55);
+  box-shadow: inset 0 1.5px 0 rgba(255,246,214,.8), inset 0 -2px 0 rgba(90,28,0,.5);
   text-shadow: 0 1px 0 rgba(255,230,180,.45);
 }
+.tab.active u { color: rgba(43,17,3,.66); }
 
 /* --- grille d'inventaire --- */
 .inventory {
   flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
-  margin: 8px 12px 0; padding: 10px; border-radius: 12px;
+  margin: 8px 12px 0; padding: 9px;
   display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
   gap: 8px; align-content: start;
   background: linear-gradient(180deg, #0E0B09, #131010);
@@ -878,7 +1055,8 @@ body {
 .inv-item {
   --rc: var(--r1); --rg: rgba(208,138,60,.34);
   position: relative; overflow: hidden;
-  padding: 8px 4px 6px; text-align: center; border-radius: 10px;
+  padding: 8px 4px 6px 11px; text-align: center;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
   background:
     linear-gradient(179deg, rgba(255,205,150,.09), transparent 34%),
     var(--brushed),
@@ -913,8 +1091,8 @@ body {
 }
 .inv-item .lv {
   position: absolute; top: 3px; left: 3px; z-index: 2;
-  padding: 1px 5px 2px; border-radius: 4px;
-  font-size: 8.5px; font-weight: 800; color: var(--cream-2);
+  padding: 1px 5px 2px;
+  font-size: 11px; font-weight: 800; color: var(--cream-2);
   background: rgba(8,6,5,.85);
   box-shadow: inset 0 0 0 1px rgba(255,214,170,.16);
 }
@@ -937,7 +1115,8 @@ body {
 }
 .inv-item.equipped::after {
   content: '✓'; position: absolute; top: 3px; right: 3px; z-index: 2;
-  width: 17px; height: 17px; border-radius: 4px;
+  width: 17px; height: 17px;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
   font-size: 11px; font-weight: 800; line-height: 17px; color: #12240A;
   background: linear-gradient(180deg, #B7EA5A, #5FA018);
   box-shadow: 0 1px 0 rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.5);
@@ -966,9 +1145,20 @@ body {
   background-image: repeating-linear-gradient(90deg, rgba(255,206,158,.20) 0 3px, rgba(0,0,0,.45) 3px 7px);
   box-shadow: 0 1px 0 rgba(0,0,0,.7), 0 -1px 0 rgba(255,190,130,.09);
 }
-.actions .btn { flex: 1; white-space: nowrap; padding: 13px 4px; font-size: 12px; letter-spacing: 0; min-width: 0; }
-.actions .btn .ic { flex: none; }
-#btn-fight { flex: 1.6; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; }
+/* UNE seule action dominante : « rapide » et « paris » sont des outils, pas
+   des concurrents du championnat. Trois boutons de même poids, c'était trois
+   fois aucune décision. */
+.actions .btn.tool {
+  flex: 0 0 58px; flex-direction: column; gap: 3px; min-width: 0;
+  padding: 8px 2px 7px; font-size: 10.5px; letter-spacing: .04em;
+}
+.actions .btn.tool .ic { width: 19px; height: 19px; flex: none; }
+.actions .btn.tool span { line-height: 1; }
+#btn-fight {
+  flex: 1; min-width: 0; padding: 15px 8px; font-size: 14px; letter-spacing: .04em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#btn-fight .ic { flex: none; }
 
 /* ---------------------------------------------------------------------------
    FEUILLES (fiche pièce, co-pilotes, réglages, profil, championnat, caisse)
@@ -1051,8 +1241,46 @@ body {
   display: block; font-size: 9px; font-weight: 800; color: var(--muted);
 }
 .ps-next { color: var(--ok); font-weight: 800; }
-.sheet-actions { display: flex; gap: 8px; }
-.sheet-actions .btn { flex: 1; font-size: 12px; padding: 12px 6px; }
+/* TROIS NIVEAUX D'ACTION, jamais trois boutons de même poids : une action
+   dominante pleine largeur, une dépense, et le destructif en dernier — et le
+   destructif est une plaque CREUSÉE à liseré rouge, pas un pavé rouge plein
+   qui attire le pouce autant que le bouton principal. */
+.sheet-actions { display: flex; flex-direction: column; gap: 8px; }
+.sheet-actions-row { display: flex; gap: 8px; }
+.sheet-actions .btn { flex: 1; font-size: 12.5px; padding: 12px 6px; }
+.sheet-actions .btn.full { width: 100%; padding: 15px 8px; font-size: 15px; }
+.btn.scrap {
+  color: #FFB6A6;
+  background: linear-gradient(180deg, rgba(38,20,16,.95), rgba(16,10,9,.95));
+  box-shadow: inset 0 1px 0 rgba(255,150,120,.20), inset 0 0 0 1.5px rgba(255,59,34,.42),
+    inset 0 -2px 0 rgba(0,0,0,.8);
+  text-shadow: 0 1px 0 rgba(0,0,0,.9);
+}
+.btn.scrap:disabled { color: var(--ghost); box-shadow: inset 0 0 0 1.5px rgba(255,59,34,.14); }
+
+/* LE BLOC DE COMPARAISON : ce qui est monté aujourd'hui, et l'écart chiffré. */
+.part-compare {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 0 12px; padding: 9px 12px 10px;
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+  background: linear-gradient(180deg, rgba(34,28,24,.95), rgba(13,11,9,.95));
+  box-shadow: inset 0 1px 0 rgba(255,214,170,.14), inset 0 0 0 1px rgba(0,0,0,.7);
+}
+.part-compare .pc-lab {
+  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 11px;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+}
+.part-compare .pc-nm {
+  flex: 1; min-width: 0; font-size: 12.5px; font-weight: 800; color: var(--cream-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.part-compare .pc-vd {
+  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.part-compare .pc-vd.up { color: var(--ok); }
+.part-compare .pc-vd.dn { color: var(--bad-hi); }
+.part-compare.over { box-shadow: inset 0 1px 0 rgba(255,150,120,.18), inset 0 0 0 1.5px rgba(255,59,34,.45); }
 
 /* --- autocollants : planche de stickers --- */
 .sticker-row { display: flex; flex-wrap: wrap; gap: 9px; margin: 0 0 16px; }
@@ -2007,3 +2235,86 @@ body {
   background: radial-gradient(circle, rgba(255,168,74,.26) 0%, rgba(255,140,40,.10) 45%, transparent 70%);
 }
 .part-thumb-lg::before { top: 46%; width: 88%; padding-bottom: 88%; }
+
+/* ===========================================================================
+   TÔLE DÉCOUPÉE — le vocabulaire de forme de MAKS
+   ---------------------------------------------------------------------------
+   Il n'y a PLUS de coin arrondi dans cette interface. Il n'y a que des coins
+   COUPÉS. C'est la différence entre une application et un atelier : une pièce
+   sortie d'une cisaille a des arêtes vives et des angles chanfreinés, jamais
+   un rayon de 12 px.
+
+   Le chanfrein est ASYMÉTRIQUE — haut-gauche et bas-droit — parce qu'un
+   chanfrein sur les quatre coins redonne exactement la mollesse qu'on cherche
+   à supprimer. Coupé sur une diagonale, l'objet a une direction de lecture.
+
+   Deux pièges, tenus ici :
+   · clip-path ROGNE les ombres portées externes. Partout où la profondeur
+     comptait (boutons, cartes), elle est rendue par filter: drop-shadow, qui
+     lui suit la découpe. Les ombres INTERNES (inset) traversent clip-path
+     sans problème : c'est elles qui portent le biseau.
+   · la course des boutons au :active doit survivre : elle est déclarée après.
+
+   Seul l'INSTRUMENT reste rond (.dial) : un manomètre est rond dans la vraie
+   vie, et c'est justement ce qui le désigne comme un cadran et non un bouton.
+   =========================================================================== */
+:root { --ch: 9px; }
+
+/* la découpe, une seule fois, pour toutes les familles de plaques */
+.btn, .chip, .close, .close-round, .toggle, .tile, .hub-tile, .daily-banner,
+.logo-sub, .logo-tag, .load-track, .load-tip, .mascot-bubble, .profile-chip,
+.part-thumb-lg, .part-statlist .ps, .sticker-swatch, .copilot-card,
+.copilot-card .cp-lock, .cp-tag, .roster-card, .rc-diff, .rc-next,
+.bet-card, .bet-odds, .bet-chip, .bet-broke, .vs-card, .vs-stake,
+.battle-toast, .intro-name, .result-sub, .result-bit, .result-progress,
+.result-league, .result-rewards, .reward-part, .reward-tag,
+.shop-card, .crate-emoji, .crate-part, #profile-input, .pstat,
+.season-league.current, .tabbtn, .btn-badge, .grabber {
+  border-radius: 0;
+  clip-path: polygon(
+    var(--ch) 0, 100% 0,
+    100% calc(100% - var(--ch)), calc(100% - var(--ch)) 100%,
+    0 100%, 0 var(--ch));
+}
+
+/* taille de chanfrein proportionnée à l'objet : une puce de 20 px coupée à
+   9 px n'est plus qu'un losange */
+.btn-badge, .cp-tag, .rc-diff, .rc-next, .reward-tag, .bet-odds,
+.logo-tag, .result-progress, .sticker-swatch .sticker-price { --ch: 4px; }
+.chip, .toggle, .load-tip, .copilot-card .cp-lock, .part-statlist .ps,
+.result-bit, .result-league, .vs-stake { --ch: 6px; }
+.close, .close-round, .sticker-swatch, .tabbtn, .tile, .hub-tile,
+.daily-banner, .profile-chip, .crate-emoji, .pstat, #profile-input,
+.load-track, .grabber { --ch: 8px; }
+.btn.xl, .vs-card, .reward-part, .result-rewards, .part-thumb-lg { --ch: 13px; }
+
+/* la profondeur perdue avec les ombres portées revient par la découpe */
+.btn { filter: drop-shadow(0 3px 0 rgba(0,0,0,.75)) drop-shadow(0 8px 12px rgba(0,0,0,.55)); }
+.btn:active { filter: drop-shadow(0 1px 0 rgba(0,0,0,.75)); }
+.btn:disabled { filter: none; }
+.roster-card, .shop-card, .copilot-card, .bet-card, .crate-part {
+  filter: drop-shadow(0 2px 0 rgba(0,0,0,.6)) drop-shadow(0 8px 12px rgba(0,0,0,.5));
+}
+.vs-card, .reward-part { filter: drop-shadow(0 4px 0 rgba(0,0,0,.7)) drop-shadow(0 18px 26px rgba(0,0,0,.7)); }
+
+/* les jauges sont des GORGES usinées : angles vifs, aucun rayon */
+.stage-progress, .roster-progress, #stage-fill, #roster-fill,
+.hpbar, .hud-clock, #hud-clock-fill, .sl-bar, .sl-bar div, #load-fill,
+.rbar, .rbar u, .load-track { border-radius: 0; }
+
+/* les portraits deviennent des MÉDAILLES octogonales : rondes, elles
+   ramenaient à elles seules toute la douceur qu'on venait de retirer */
+.profile-chip img, .copilot-card img, .shop-card.copilot img,
+.profile-head img, .pilot-medal, .sl-dot {
+  border-radius: 0;
+  clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
+}
+
+/* la feuille montante : deux coins coupés en haut, elle sort de la tôle */
+.sheet-card {
+  border-radius: 0;
+  clip-path: polygon(20px 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%, 0 20px);
+}
+
+/* rappel : le cadran d'énergie est le SEUL rond assumé de l'interface */
+.dial, .dial-ticks, .dial-core { border-radius: 50%; clip-path: none; }

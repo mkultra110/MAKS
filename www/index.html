@@ -129,38 +129,67 @@
     </header>
 
     <div class="stage-progress"><div id="stage-fill"></div></div>
-    <button id="daily-banner" class="daily-banner hidden"></button>
 
-    <div class="preview-wrap">
-      <canvas id="preview-canvas"></canvas>
-      <div id="machine-name" class="machine-name"></div>
-      <div class="car-stats">
-        <div class="stat"><svg class="ic"><use href="#i-heart"/></svg><span id="stat-hp">0</span></div>
-        <div class="stat"><svg class="ic"><use href="#i-sword"/></svg><span id="stat-atk">0</span></div>
+    <!-- LA BAIE : la machine est la seule chose éclairée de l'écran, et la
+         console de mesure est SOUDÉE dessous — les jauges ne flottent plus
+         par-dessus un rendu 3D sombre et mouvant, elles ont un socle opaque. -->
+    <div class="bay">
+      <div class="preview-wrap">
+        <canvas id="preview-canvas"></canvas>
+        <button id="daily-banner" class="order hidden"></button>
+        <div id="machine-name" class="plate"></div>
+        <div id="garage-toast" class="garage-toast hidden"></div>
       </div>
-      <div class="energy-pill" id="energy-pill">
-        <svg class="ic"><use href="#i-bolt"/></svg>
-        <div class="energy-track"><div id="energy-fill"></div></div>
-        <span id="stat-energy">0/0</span>
+      <div class="console">
+        <!-- LE chiffre de verdict : « ma machine est-elle bonne ? » -->
+        <div class="pw">
+          <div class="stencil">Puissance</div>
+          <div class="pw-val">
+            <b id="stat-power">0</b>
+            <span id="stat-power-delta" class="delta hidden"></span>
+          </div>
+        </div>
+        <i class="seam"></i>
+        <div class="reads">
+          <div class="read hp"><span class="stencil">PV</span><b id="stat-hp">0</b><div class="rbar"><u id="bar-hp"></u></div></div>
+          <div class="read atk"><span class="stencil">ATQ</span><b id="stat-atk">0</b><div class="rbar"><u id="bar-atk"></u></div></div>
+        </div>
+        <i class="seam"></i>
+        <!-- L'énergie est la SEULE contrainte de montage : elle a droit à un
+             instrument à elle, avec sa zone rouge, pas à une pastille. -->
+        <div class="dial" id="energy-dial">
+          <i class="dial-ticks"></i>
+          <i class="dial-lim"></i>
+          <i class="dial-needle"></i>
+          <div class="dial-core">
+            <div class="dial-txt"><span id="stat-energy">0/0</span></div>
+            <div class="dial-cap stencil">NRJ</div>
+          </div>
+        </div>
       </div>
-      <div id="energy-warning" class="energy-warning hidden">Énergie dépassée !</div>
-      <div id="garage-toast" class="garage-toast hidden"></div>
+    </div>
+    <div id="energy-warning" class="energy-warning hidden"></div>
+
+    <div class="mount">
+      <div class="mount-head">
+        <span class="stencil">Montage</span>
+        <i class="rule-line"></i>
+        <span class="sets-row" id="sets-row"></span>
+      </div>
+      <div class="rail" id="slots-row"></div>
     </div>
 
-    <div class="slots-row" id="slots-row"></div>
-    <div class="sets-row" id="sets-row"></div>
-
     <nav class="inv-tabs">
-      <button class="tab active" data-tab="body"><svg class="ic"><use href="#i-car"/></svg></button>
-      <button class="tab" data-tab="wheel"><svg class="ic"><use href="#i-wheel"/></svg></button>
-      <button class="tab" data-tab="weapon"><svg class="ic"><use href="#i-sword"/></svg></button>
-      <button class="tab" data-tab="gadget"><svg class="ic"><use href="#i-wrench"/></svg></button>
+      <button class="tab active" data-tab="body"><svg class="ic"><use href="#i-car"/></svg><span>Corps</span><u></u></button>
+      <button class="tab" data-tab="wheel"><svg class="ic"><use href="#i-wheel"/></svg><span>Roues</span><u></u></button>
+      <button class="tab" data-tab="weapon"><svg class="ic"><use href="#i-sword"/></svg><span>Armes</span><u></u></button>
+      <button class="tab" data-tab="gadget"><svg class="ic"><use href="#i-wrench"/></svg><span>Gadg.</span><u></u></button>
     </nav>
     <div id="inventory" class="inventory"></div>
 
     <footer class="actions">
-      <button id="btn-quick" class="btn secondary"><svg class="ic"><use href="#i-dice"/></svg> Rapide</button>
-      <button id="btn-bet" class="btn secondary"><svg class="ic"><use href="#i-coin"/></svg> Paris</button>
+      <button id="btn-quick" class="btn tool"><svg class="ic"><use href="#i-dice"/></svg><span>Rapide</span></button>
+      <button id="btn-bet" class="btn tool"><svg class="ic"><use href="#i-coin"/></svg><span>Paris</span></button>
       <button id="btn-fight" class="btn primary"><svg class="ic"><use href="#i-trophy"/></svg> CHAMPIONNAT</button>
     </footer>
   </section>
@@ -180,10 +209,15 @@
       </div>
       <div id="part-statlist" class="part-statlist"></div>
       <div id="sticker-row" class="sticker-row hidden"></div>
+      <!-- La seule question de cet écran : « est-ce mieux que ce que j'ai
+           déjà ? ». Elle n'était posée nulle part. -->
+      <div id="part-compare" class="part-compare hidden"></div>
       <div class="sheet-actions">
-        <button id="btn-equip" class="btn primary">Équiper</button>
-        <button id="btn-upgrade" class="btn gold"></button>
-        <button id="btn-recycle" class="btn danger"></button>
+        <button id="btn-equip" class="btn primary full">Équiper</button>
+        <div class="sheet-actions-row">
+          <button id="btn-upgrade" class="btn gold"></button>
+          <button id="btn-recycle" class="btn scrap"></button>
+        </div>
       </div>
     </div>
   </div>

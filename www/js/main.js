@@ -440,24 +440,34 @@ function dailyOfToday() {
   return { day, mutator, opponent: { ...opponent, name: opponent.name, idx: null } };
 }
 
+// Le défi du jour a DEUX habits : une dalle pleine largeur au QG (où il a sa
+// place), et une fiche épinglée dans la baie du garage (où la vedette revient
+// à la machine, pas à une bannière jaune).
 function renderDailyBanner() {
-  for (const id of ['daily-banner', 'hub-daily']) {
-    const el = document.getElementById(id);
-    if (!el) continue;
-    el.classList.remove('hidden');
-    if (state.dailyDone === todayKey()) {
-      el.className = 'daily-banner done';
-      // décompte réel jusqu'au prochain défi (minuit)
-      const now = new Date();
-      const next = new Date(now);
-      next.setHours(24, 0, 0, 0);
-      const mins = Math.max(0, Math.floor((next - now) / 60000));
-      el.innerHTML = `<svg class="ic"><use href="#i-check"/></svg> Défi réussi — prochain dans ${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}`;
-    } else {
-      const { mutator } = dailyOfToday();
-      el.className = 'daily-banner';
-      el.innerHTML = `<svg class="ic"><use href="#i-daily"/></svg> Défi du jour : ${mutator.name} — gagne une pièce 3★ !`;
-    }
+  const done = state.dailyDone === todayKey();
+  let label, prog;
+  if (done) {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(24, 0, 0, 0);
+    const mins = Math.max(0, Math.floor((next - now) / 60000));
+    label = `Défi réussi — prochain dans ${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}`;
+    prog = '✓';
+  } else {
+    label = `${dailyOfToday().mutator.name} — gagne une pièce 3★ !`;
+    prog = '1';
+  }
+  const hub = document.getElementById('hub-daily');
+  if (hub) {
+    hub.classList.remove('hidden');
+    hub.className = 'daily-banner' + (done ? ' done' : '');
+    hub.innerHTML = `<svg class="ic"><use href="#i-${done ? 'check' : 'daily'}"/></svg> ${done ? label : 'Défi du jour : ' + label}`;
+  }
+  const bay = document.getElementById('daily-banner');
+  if (bay) {
+    bay.classList.remove('hidden');
+    bay.className = 'order' + (done ? ' done' : '');
+    bay.innerHTML = `<span class="order-txt"><b>Défi</b>${label}</span><span class="order-prog">${prog}</span>`;
   }
 }
 

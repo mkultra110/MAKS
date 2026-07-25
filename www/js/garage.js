@@ -227,6 +227,22 @@ function closeCopilotSheet() {
   document.getElementById('copilot-sheet').classList.add('hidden');
 }
 
+// La PUISSANCE est une synthèse, pas une nouvelle statistique de jeu : elle ne
+// sert qu'à trancher d'un coup d'œil « ce montage est-il meilleur ? ». L'attaque
+// pèse plus lourd que les PV parce qu'un combat se gagne en tapant.
+export function machinePower(stats) {
+  return Math.round(stats.hp + stats.atk * 3);
+}
+let lastPower = null, bestHp = 1, bestAtk = 1;
+const DIAL_START = 210, DIAL_SPAN = 300; // manomètre : arc de 300° ouvert en bas
+
+// Numéro de série lisible et stable, dérivé de l'identifiant de la pièce.
+function serialOf(id) {
+  let h = 0;
+  for (let i = 0; i < String(id).length; i++) h = (h * 31 + String(id).charCodeAt(i)) & 0xffff;
+  return String(h % 10000).padStart(4, '0');
+}
+
 export function renderGarage() {
   document.getElementById('coins').textContent = state.coins;
   const li = leagueIndex(state.stage);
@@ -239,19 +255,43 @@ export function renderGarage() {
 
   const lo = buildLoadout();
   const stats = computeCarStats(lo);
+  const over = stats.used > stats.capacity;
+
+  // LA PUISSANCE : le seul chiffre qui répond à « ma machine est-elle bonne ? ».
+  // Sans lui le joueur devait comparer PV et ATQ de tête pour trancher.
+  const power = machinePower(stats);
+  document.getElementById('stat-power').textContent = power.toLocaleString('fr-FR');
+  const deltaEl = document.getElementById('stat-power-delta');
+  const diff = lastPower === null ? 0 : power - lastPower;
+  if (diff !== 0) {
+    deltaEl.className = 'delta ' + (diff > 0 ? 'up' : 'dn');
+    deltaEl.textContent = (diff > 0 ? '▲' : '▼') + Math.abs(diff).toLocaleString('fr-FR');
+  } else {
+    deltaEl.className = 'delta hidden';
+  }
+  lastPower = power;
+
   document.getElementById('stat-hp').textContent = stats.hp;
   document.getElementById('stat-atk').textContent = stats.atk;
+  // les micro-barres sont RELATIVES au meilleur montage déjà vu : une barre
+  // pleine en permanence ne dirait rien
+  bestHp = Math.max(bestHp, stats.hp);
+  bestAtk = Math.max(bestAtk, stats.atk);
+  document.getElementById('bar-hp').style.width = (stats.hp / Math.max(1, bestHp) * 100) + '%';
+  document.getElementById('bar-atk').style.width = (stats.atk / Math.max(1, bestAtk) * 100) + '%';
+
+  // LE CADRAN D'ÉNERGIE : arc rempli, aiguille, repère de limite, zone rouge.
+  // L'échelle dépasse la limite d'un tiers pour que le dépassement soit VISIBLE
+  // au lieu d'être simplement « en butée ».
+  const dial = document.getElementById('energy-dial');
   document.getElementById('stat-energy').textContent = `${stats.used}/${stats.capacity}`;
-  // énergie en cases segmentées (une par point), façon bible graphique
-  const track = document.querySelector('.energy-track');
-  const over = stats.used > stats.capacity;
-  track.innerHTML = '';
-  const total = Math.max(stats.capacity, stats.used, 1);
-  for (let i = 0; i < total; i++) {
-    const seg = document.createElement('div');
-    seg.className = 'eseg' + (i < stats.used ? (i >= stats.capacity ? ' over' : ' on') : '');
-    track.appendChild(seg);
-  }
+  const scale = Math.max(stats.capacity * 1.33, stats.used, 1);
+  const fill = Math.min(stats.used / scale, 1) * DIAL_SPAN;
+  dial.style.setProperty('--f', fill.toFixed(1) + 'deg');
+  dial.style.setProperty('--a', (DIAL_START + fill).toFixed(1) + 'deg');
+  dial.style.setProperty('--l', (DIAL_START + (stats.capacity / scale) * DIAL_SPAN).toFixed(1) + 'deg');
+  dial.classList.toggle('over', over);
+
   const warning = document.getElementById('energy-warning');
   const valid = loadoutValid(lo);
   if (over) {
@@ -276,7 +316,17 @@ export function renderGarage() {
     whale: 'La Baleine Blindée', pony: 'Le Poney Fou',
   };
   const nameEl = document.getElementById('machine-name');
-  if (nameEl) nameEl.textContent = lo.body ? (MACHINE_NAMES[lo.body.type] || 'La Machine') : '';
+  if (nameEl) {
+    nameEl.innerHTML = '';
+    if (lo.body) {
+      const b = document.createElement('b');
+      b.textContent = MACHINE_NAMES[lo.body.type] || 'La Machine';
+      const sn = document.createElement('small');
+      // numéro de série dérivé de l'id de la pièce : stable, et ça signe l'objet
+      sn.textContent = 'N° MK-' + serialOf(lo.body.id);
+      nameEl.append(b, sn);
+    }
+  }
   renderSlots(lo);
   renderSets(lo);
   renderInventory();
@@ -313,41 +363,62 @@ function renderSlots(lo) {
   const row = document.getElementById('slots-row');
   row.innerHTML = '';
 
-  // emplacement co-pilote en premier
+  // LE PILOTE D'ABORD, et pas sous la même forme que les pièces : c'est
+  // quelqu'un, pas un composant. Un cordon de soudure l'isole du mécanique.
   const cpSlot = document.createElement('div');
-  cpSlot.className = 'slot filled';
+  cpSlot.className = 'slot pilot';
+  const medal = document.createElement('div');
+  medal.className = 'pilot-medal';
   const cpImg = document.createElement('img');
   cpImg.src = copilotThumb(state.copilot);
-  cpSlot.appendChild(cpImg);
+  cpImg.alt = COPILOTS[state.copilot]?.name || 'Co-pilote';
+  medal.appendChild(cpImg);
+  cpSlot.appendChild(medal);
   const cpTag = document.createElement('div');
   cpTag.className = 'slot-tag';
-  cpTag.textContent = 'Co-pilote';
+  cpTag.textContent = 'Pilote';
   cpSlot.appendChild(cpTag);
   cpSlot.addEventListener('click', () => { sfxClick(); openCopilotSheet(); });
   row.appendChild(cpSlot);
+  const weld = document.createElement('i');
+  weld.className = 'weld';
+  row.appendChild(weld);
 
   const bDef = lo.body ? partDef(lo.body) : null;
   const defs = [
-    { label: 'Corps', part: lo.body },
-    { label: 'Roue', part: lo.wheels[0] },
-    { label: 'Roue', part: lo.wheels[1] },
+    { label: 'Corps', kind: 'body', part: lo.body },
+    { label: 'Roue', kind: 'wheel', part: lo.wheels[0] },
+    { label: 'Roue', kind: 'wheel', part: lo.wheels[1] },
   ];
   const nW = bDef ? bDef.weaponSlots : 1;
-  for (let i = 0; i < nW; i++) defs.push({ label: 'Arme', part: lo.weapons[i] });
+  for (let i = 0; i < nW; i++) defs.push({ label: 'Arme', kind: 'weapon', part: lo.weapons[i] });
   const nG = bDef ? bDef.gadgetSlots : 0;
-  for (let i = 0; i < nG; i++) defs.push({ label: 'Gadget', part: lo.gadgets[i] });
+  for (let i = 0; i < nG; i++) defs.push({ label: 'Gadget', kind: 'gadget', part: lo.gadgets[i] });
 
   for (const d of defs) {
     const el = document.createElement('div');
-    el.className = 'slot' + (d.part ? ' filled' : '');
+    el.className = `slot k-${d.kind} ` + (d.part ? 'filled' : 'empty');
+    const well = document.createElement('div');
+    well.className = 'slot-well';
     if (d.part) {
+      // le liseré du logement reprend la couleur du palier : la rareté se lit
+      // sur le montage, pas seulement dans l'inventaire
+      el.style.setProperty('--rc', `var(--r${Math.min(5, Math.max(1, d.part.stars || 1))})`);
       const img = document.createElement('img');
       img.src = partThumb(d.part);
-      el.appendChild(img);
+      img.alt = partDef(d.part).name;
+      well.appendChild(img);
+      const lv = document.createElement('div');
+      lv.className = 'slot-lv';
+      lv.textContent = d.part.level;
+      el.appendChild(lv);
       el.addEventListener('click', () => { sfxClick(); openSheet(d.part); });
     } else {
-      el.appendChild(document.createTextNode('+'));
+      const plus = document.createElement('i');
+      plus.className = 'plus';
+      well.appendChild(plus);
     }
+    el.appendChild(well);
     const tag = document.createElement('div');
     tag.className = 'slot-tag';
     tag.textContent = d.label;
@@ -359,6 +430,13 @@ function renderSlots(lo) {
 function renderInventory() {
   const inv = document.getElementById('inventory');
   inv.innerHTML = '';
+  // compte par onglet : une icône seule ne dit ni ce qu'elle range, ni combien
+  const counts = { body: 0, wheel: 0, weapon: 0, gadget: 0 };
+  for (const p of state.inventory) if (counts[p.kind] !== undefined) counts[p.kind]++;
+  document.querySelectorAll('.inv-tabs .tab').forEach(t => {
+    const u = t.querySelector('u');
+    if (u) u.textContent = counts[t.dataset.tab] ?? 0;
+  });
   const parts = state.inventory.filter(p => p.kind === currentTab);
   if (!parts.length) {
     const e = document.createElement('div');
@@ -390,21 +468,21 @@ function renderInventory() {
     lv.className = 'lv';
     lv.textContent = 'Nv ' + p.level;
     el.appendChild(lv);
-    // stat clé sur la carte, chevron vert si elle dépasse la pièce équipée
+    // VERDICT CHIFFRÉ contre la pièce déjà montée : c'est la seule décision que
+    // le joueur a à prendre ici, elle mérite un nombre, pas un chevron muet.
     const [sk, sv] = partStats(p)[0];
     const ms = document.createElement('div');
     ms.className = 'ms';
-    ms.style.fontSize = '11px';
     ms.textContent = `${sk} ${sv}`;
     const eq = eqByKind[p.kind];
     if (eq && eq.id !== p.id) {
       const a = parseFloat(sv), b = parseFloat(partStats(eq)[0][1]);
-      if (Number.isFinite(a) && Number.isFinite(b) && a > b) {
-        const up = document.createElement('span');
-        up.className = 'up';
-        up.style.color = 'var(--go)';
-        up.textContent = ' ▲';
-        ms.appendChild(up);
+      if (Number.isFinite(a) && Number.isFinite(b) && a !== b) {
+        const vd = document.createElement('span');
+        vd.className = 'vd ' + (a > b ? 'up' : 'dn');
+        const gap = Math.round(Math.abs(a - b) * (Number.isInteger(a) && Number.isInteger(b) ? 1 : 10)) / (Number.isInteger(a) && Number.isInteger(b) ? 1 : 10);
+        vd.textContent = ` ${a > b ? '▲' : '▼'}${gap}`;
+        ms.appendChild(vd);
       }
     }
     el.appendChild(ms);
@@ -476,13 +554,52 @@ function openSheet(part) {
   }
 
   const equipped = isEquipped(part.id);
+
+  // COMPARAISON avec la pièce déjà montée du même type : c'est LA décision de
+  // cet écran, et rien ne la posait jusqu'ici.
+  const cmp = document.getElementById('part-compare');
+  const lo = buildLoadout();
+  const mounted = { body: lo.body, wheel: lo.wheels[0], weapon: lo.weapons[0], gadget: lo.gadgets[0] }[part.kind];
+  cmp.className = 'part-compare';
+  cmp.innerHTML = '';
+  if (equipped || !mounted || mounted.id === part.id) {
+    cmp.classList.add('hidden');
+  } else {
+    const [, mine] = partStats(part)[0];
+    const [, theirs] = partStats(mounted)[0];
+    const a = parseFloat(mine), b = parseFloat(theirs);
+    const lab = document.createElement('span');
+    lab.className = 'pc-lab';
+    lab.textContent = 'Montée';
+    const nm = document.createElement('span');
+    nm.className = 'pc-nm';
+    nm.textContent = `${partDef(mounted).name} Nv ${mounted.level} · ${theirs}`;
+    cmp.append(lab, nm);
+    if (Number.isFinite(a) && Number.isFinite(b) && a !== b) {
+      const vd = document.createElement('span');
+      vd.className = 'pc-vd ' + (a > b ? 'up' : 'dn');
+      vd.textContent = (a > b ? '▲' : '▼') + Math.round(Math.abs(a - b) * 10) / 10;
+      cmp.appendChild(vd);
+    }
+    // l'énergie est la seule contrainte dure : prévenir AVANT le montage
+    const stats = computeCarStats(lo);
+    const delta = (partDef(part).energy || 0) - (partDef(mounted).energy || 0);
+    if (stats.used + delta > stats.capacity) {
+      cmp.classList.add('over');
+      const warn = document.createElement('span');
+      warn.className = 'pc-vd dn';
+      warn.textContent = '⚡!';
+      cmp.appendChild(warn);
+    }
+  }
+
   const btnEquip = document.getElementById('btn-equip');
   btnEquip.textContent = equipped ? (part.kind === 'body' ? 'Équipé' : 'Retirer') : 'Équiper';
   btnEquip.disabled = equipped && part.kind === 'body';
 
   const btnUp = document.getElementById('btn-upgrade');
   // hiérarchie : l'action primaire domine (équiper si pas équipée, sinon améliorer)
-  btnEquip.className = equipped ? 'btn outline' : 'btn primary';
+  btnEquip.className = equipped ? 'btn outline full' : 'btn primary full';
   btnUp.className = equipped ? 'btn gold' : 'btn outline';
   if (part.level >= maxLevel(part)) {
     btnUp.textContent = 'Niveau MAX';
@@ -495,6 +612,7 @@ function openSheet(part) {
   recycleArmed = false;
   clearTimeout(recycleTimer);
   const btnRec = document.getElementById('btn-recycle');
+  btnRec.className = 'btn scrap';
   btnRec.textContent = `Recycler · +${recycleValue(part)}`;
   btnRec.disabled = equipped;
 }
