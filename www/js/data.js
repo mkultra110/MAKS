@@ -146,13 +146,18 @@ export const COPILOTS = {
 };
 
 // ---- Ligues (par étape de championnat) ----
+// Les teintes sont EXACTEMENT celles des paliers de matière (--r1..--r5,
+// TIER_MATS) : le jeu n'a le droit qu'à une seule échelle de couleur. Les deux
+// anciennes valeurs hors palette — un cyan qui entrait en collision avec l'arc
+// de soudure, seul bleu froid de la direction artistique, et un rose qui
+// n'apparaissait nulle part ailleurs — créaient une seconde échelle concurrente.
 export const LEAGUES = [
-  { name: 'Bois',    min: 1,  color: '#a9825a' },
-  { name: 'Bronze',  min: 3,  color: '#d18a4e' },
-  { name: 'Argent',  min: 6,  color: '#c9d4e8' },
-  { name: 'Or',      min: 10, color: '#ffc93e' },
-  { name: 'Diamant', min: 15, color: '#7ae0ff' },
-  { name: 'Légende', min: 21, color: '#ff5d7a' },
+  { name: 'Bois',    min: 1,  color: '#D08A3C' },
+  { name: 'Bronze',  min: 3,  color: '#C97F2E' },
+  { name: 'Argent',  min: 6,  color: '#C9D4E0' },
+  { name: 'Or',      min: 10, color: '#FFC93E' },
+  { name: 'Diamant', min: 15, color: '#4E93E8' },
+  { name: 'Légende', min: 21, color: '#FF4A38' },
 ];
 export function leagueIndex(stage) {
   let i = 0;

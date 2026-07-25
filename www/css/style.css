@@ -355,7 +355,10 @@ body {
     inset 0 0 0 1px rgba(110,20,4,.9), 0 1px 0 #6A1204, 0 2px 0 #170703;
 }
 
-.btn.xl { font-size: 19px; padding: 17px 34px; border-radius: 14px; }
+/* pas de border-radius ici : .btn.xl (0,2,0) battait le reset du bloc TÔLE
+   DÉCOUPÉE (0,1,0) et laissait deux coins arrondis sur le bouton le plus
+   regardé du jeu */
+.btn.xl { font-size: 19px; padding: 17px 34px; }
 .btn.full { width: 100%; }
 .btn:disabled {
   color: var(--ghost); text-shadow: 0 1px 0 rgba(0,0,0,.8);
@@ -404,7 +407,7 @@ body {
     inset 0 0 14px rgba(255,150,40,.13),
     0 2px 0 rgba(0,0,0,.6), 0 6px 14px -8px rgba(255,140,30,.5);
 }
-.wallet span { color: var(--signal-hi); font-variant-numeric: tabular-nums; }
+.wallet span { color: var(--cream); font-variant-numeric: tabular-nums; }
 .stage-chip { font-size: 12.5px; }
 .medal-chip { margin-left: auto; }
 .topbar .wallet, .roster-head .wallet { margin-left: auto; }
@@ -711,7 +714,7 @@ body {
   background: linear-gradient(180deg, #FFE685, #FFC400 46%, #B85D00);
   box-shadow: 0 0 8px rgba(255,175,40,.45);
 }
-.daily-banner .ic { color: var(--signal); }
+
 .daily-banner:active { transform: translateY(3px); }
 /* défi accompli : la plaque refroidit, elle redevient de l'acier */
 .daily-banner.done {
@@ -719,9 +722,8 @@ body {
   background: var(--brushed), linear-gradient(180deg, #1A1613, #110F0D);
 }
 .daily-banner.done::before { background: linear-gradient(180deg, #B7EA5A, #3E7A12); box-shadow: none; }
-.daily-banner.done .ic { color: var(--ok); }
 
-/* --- baie d'aperçu 3D : la fosse du garage --- */
+
 /* ---------------------------------------------------------------------------
    LA BAIE — la machine est la SEULE chose éclairée de l'écran, et la console
    de mesure est SOUDÉE dessous. Les jauges ne flottent plus par-dessus un
@@ -999,13 +1001,16 @@ body {
 .plus::before { left: 7px; top: 0; width: 2px; height: 16px; }
 .plus::after { top: 7px; left: 0; height: 2px; width: 16px; }
 .slot.pilot { flex: 0 0 50px; background: none; box-shadow: none; padding: 0; align-items: center; }
+/* LE PILOTE EST RENDU EN MATIÈRE DOUCE, la machine en facettes dures. C'est le
+   contraste que CATS pose entre le chat et le véhicule, et il n'existait pas :
+   le médaillon était un dégradé conique à facettes cerclé d'ambre, donc une
+   pièce d'acier de plus. Deux arrêts radiaux, aucune arête, aucun cerclage. */
 .pilot-medal {
-  position: relative; width: 48px; height: 48px; margin-top: 0; border-radius: 50%;
+  position: relative; width: 48px; height: 48px; margin-top: 0;
   display: grid; place-items: center; overflow: hidden;
-  background: radial-gradient(72% 70% at 50% 2%, rgba(255,196,120,.44), rgba(255,150,60,.10) 56%, transparent 82%),
-    conic-gradient(from 210deg, #4E443A, #2A231E 40%, #4E443A 62%, #261F1A 100%);
-  box-shadow: inset 0 2px 0 rgba(255,226,180,.42), inset 0 -2px 0 rgba(0,0,0,.9),
-    inset 0 0 0 2px rgba(255,150,50,.28), 0 3px 0 rgba(0,0,0,.7), 0 8px 14px -8px #000;
+  background: radial-gradient(68% 66% at 50% 16%, #5C5045, #241E1A 100%);
+  box-shadow: inset 0 2px 0 rgba(255,226,180,.22), inset 0 -2px 0 rgba(0,0,0,.75),
+    0 3px 0 rgba(0,0,0,.6), 0 8px 14px -8px #000;
 }
 .pilot-medal img { width: 44px; height: 44px; object-fit: contain; }
 .slot.pilot .slot-tag { position: absolute; left: -4px; right: -4px; bottom: 1px; text-align: center; margin: 0; }
@@ -1351,7 +1356,7 @@ body {
     0 0 0 2px var(--signal), 0 0 14px -2px rgba(255,190,40,.7);
 }
 .sticker-swatch.locked { opacity: .5; }
-.sticker-swatch.locked .ic { width: 16px; height: 16px; }
+.sticker-swatch.locked .ic { width: 20px; height: 20px; }
 
 /* ---------------------------------------------------------------------------
    CO-PILOTES
@@ -1448,9 +1453,22 @@ body {
 .roster-card img {
   width: 62px; height: 46px; flex-shrink: 0; object-fit: contain;
   clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
-  background: radial-gradient(84% 82% at 50% 0%, rgba(255,192,116,.34), rgba(255,150,60,.08) 58%, transparent 86%),
+  background: radial-gradient(84% 82% at 50% 0%, color-mix(in srgb, var(--rc, #C9BFA8) 34%, transparent),
+      color-mix(in srgb, var(--rc, #C9BFA8) 8%, transparent) 58%, transparent 86%),
     linear-gradient(180deg, #453A32 0%, #2C2620 48%, #17130F 100%);
-  box-shadow: inset 0 2px 0 rgba(255,228,188,.34), inset 0 0 0 1px rgba(0,0,0,.75), 0 2px 5px -2px #000;
+  box-shadow: inset 0 2px 0 rgba(255,228,188,.28), inset 0 0 0 1px rgba(0,0,0,.75), 0 2px 5px -2px #000;
+}
+
+/* LE BOSS CHANGE DE SILHOUETTE, pas seulement de teinte : la difficulté ne
+   peut pas être portée par la seule couleur — c'est exactement ce que l'étude
+   d'ergonomie commanditée par ZeptoLab a documenté sur les emplacements. */
+.roster-card.boss { grid-column: 1 / -1; padding-left: 30px; }
+.roster-card.boss img { width: 92px; height: 68px; }
+.roster-card.boss .rc-name { font-size: 16px; }
+.roster-card.boss::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 22px;
+  background-image: var(--hazard); background-size: 13px 13px; opacity: .42;
+  box-shadow: inset -1px 0 0 rgba(0,0,0,.75);
 }
 .roster-card .rc-name {
   font-size: 12.5px; font-weight: 800; color: var(--cream);
@@ -1487,17 +1505,25 @@ body {
     0 2px 0 rgba(0,0,0,.7), 0 8px 16px -10px rgba(255,180,40,.45);
 }
 /* adversaire battu : la plaque refroidit */
-.roster-card.beaten { opacity: .42; box-shadow: inset 0 0 0 1px rgba(0,0,0,.6); }
+.roster-card.beaten {
+  opacity: .42; padding-bottom: 22px;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.6);
+}
 .roster-card.beaten::after {
-  content: 'BATTU'; position: absolute; right: 7px; bottom: 5px;
+  content: 'BATTU'; position: absolute; left: 78px; bottom: 5px;
   padding: 1px 6px 2px; border-radius: 4px;
   font-size: 9px; font-weight: 800; letter-spacing: .14em; color: var(--bad-hi);
   background: rgba(255,59,34,.10);
   box-shadow: inset 0 0 0 1px rgba(255,59,34,.45);
   transform: rotate(-7deg);
 }
+/* le badge de difficulté vit DANS le flux de la carte : posé en absolu il
+   mordait soit sur le nom, soit sur la ligne de statistiques selon la longueur
+   du nom — « Marquis Griffe » se retrouvait tronqué en « Marqu… ». */
+.roster-card .rc-stats { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.roster-card .rc-diff { position: static; display: inline-block; margin-top: 3px; }
 .rc-diff {
-  position: absolute; top: 2px; right: 6px;
+  position: absolute; bottom: 4px; right: 6px;
   padding: 1px 7px 2px; border-radius: 4px;
   font-size: 8.5px; font-weight: 800; letter-spacing: .1em; color: #12240A;
   box-shadow: 0 1px 0 rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.45);
@@ -1692,7 +1718,7 @@ body {
     0 3px 8px -4px #000;
   animation: msg-pop .3s .6s steps(3) backwards;
 }
-.vs-stake .ic { color: var(--signal); }
+
 .vs-buttons { display: flex; gap: 12px; justify-content: center; margin-top: 30px; }
 
 /* ---------------------------------------------------------------------------
@@ -1930,7 +1956,7 @@ body {
   box-shadow: inset 0 1.5px 0 var(--edge-hi), inset 0 -2px 0 rgba(0,0,0,.86),
     inset 0 0 0 1px rgba(0,0,0,.6), 0 3px 0 rgba(0,0,0,.78), 0 12px 22px -12px rgba(0,0,0,.95);
 }
-.result-rewards .ic { color: var(--signal); filter: drop-shadow(0 3px 4px rgba(0,0,0,.85)); }
+
 /* pièce gagnée : cadre de rareté légendaire */
 .reward-part {
   position: relative; width: 232px; margin: 0 auto 22px;
@@ -2094,7 +2120,8 @@ body {
 /* le prix vit DANS la plaque : posé dessous, la découpe le tranchait */
 .sticker-swatch.big .sticker-price {
   position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
-  padding: 1px 8px 2px; border-radius: 5px; white-space: nowrap;
+  padding: 1px 8px 2px; white-space: nowrap;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
   font-size: 10px; font-weight: 800; color: #1B1206;
   background: linear-gradient(180deg, #FFE685, #FFC400 60%, #A87500);
   box-shadow: 0 1px 0 rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.5);
@@ -2268,7 +2295,9 @@ body {
   background: transparent;
   transition: color .08s steps(1);
 }
-.tabbtn .ic { width: 1.7em; height: 1.7em; opacity: .55; }
+/* les icônes de la famille « pièce » portent une matière : sous 24 px elles
+   deviennent illisibles. La cible tactile du bouton reste, elle, ≥ 44 px. */
+.tabbtn .ic { width: 25px; height: 25px; opacity: .62; }
 /* DISCIPLINE DE L'ACCENT : trois zones ambre par écran, pas davantage.
    L'onglet actif était une grosse plaque orange qui disputait le point focal au
    bouton d'action. Il se signale maintenant par un RAIL de lumière et par sa
@@ -2282,7 +2311,7 @@ body {
   background: linear-gradient(90deg, transparent, var(--amber-hi), var(--amber), transparent);
   box-shadow: 0 0 10px -1px rgba(255,150,50,.85);
 }
-.tabbtn.active .ic { opacity: 1; color: var(--amber-hi); }
+.tabbtn.active .ic { opacity: 1; }
 .tabbtn:active { color: var(--cream-2); }
 #app.with-tabs .screen { padding-bottom: calc(64px + var(--sab)); }
 #app.with-tabs .tabbar { padding-bottom: calc(8px + var(--sab)); }
@@ -2376,6 +2405,7 @@ body {
    ramenaient à elles seules toute la douceur qu'on venait de retirer */
 .profile-chip img, .copilot-card img, .shop-card.copilot img,
 .profile-head img, .pilot-medal, .sl-dot {
+  background: radial-gradient(68% 66% at 50% 16%, #5C5045, #241E1A 100%);
   border-radius: 0;
   clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
 }
@@ -2421,3 +2451,209 @@ body {
   color: rgba(43,17,3,.66); text-shadow: 0 1px 0 rgba(255,230,180,.35);
 }
 #btn-fight:disabled small { color: var(--ghost); text-shadow: none; }
+
+/* ---------------------------------------------------------------------------
+   QG — LE RAIL DE CHAMPIONNAT ET L'ÉTIQUETTE DE MACHINE
+   La progression est le moteur du jeu et n'apparaissait NULLE PART au QG :
+   « Ét. 3 » ne dit ni d'où l'on vient ni ce qu'il reste. Et la machine, seul
+   contenu réellement beau de l'écran, n'était ni nommée ni chiffrée.
+   --------------------------------------------------------------------------- */
+/* la barre du QG doit tenir en 390 px : le rail est le seul élément qui a
+   le droit de rétrécir, le reste est incompressible */
+.champ { gap: 7px; padding: 0 9px 0 8px; min-width: 0; }
+.champ .rail { display: flex; gap: 1.5px; align-items: center; height: 10px; }
+.champ .rail i {
+  width: 5px; height: 10px;
+  background: linear-gradient(180deg, #0B0908, #191412);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.9), inset 0 0 0 1px rgba(0,0,0,.8);
+}
+.champ .rail i.done {
+  background: linear-gradient(180deg, #E9DCC4, #9A8A72);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), inset 0 0 0 1px rgba(0,0,0,.6);
+}
+.champ .rail i.now {
+  background: linear-gradient(180deg, #FFE685, #FFC400 55%, #B85D00);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 0 8px rgba(255,175,40,.7);
+}
+.champ-num {
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 12px;
+  color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.champ-num b { font-size: 16px; color: var(--cream); }
+
+/* étiquette suspendue sous la machine, au QG */
+.hub-tag {
+  align-self: flex-start; margin: 0 0 2px; pointer-events: none;
+  min-width: 154px; padding: 7px 12px 8px;
+  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+  background: linear-gradient(180deg, rgba(52,43,36,.94), rgba(18,15,12,.94));
+  box-shadow: inset 0 1.5px 0 var(--edge-hi), inset 0 -1.5px 0 rgba(0,0,0,.85),
+    inset 0 0 0 1px rgba(0,0,0,.6);
+}
+.hub-tag .tag-name {
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 16px;
+  letter-spacing: .04em; text-transform: uppercase; color: var(--cream);
+  text-shadow: 0 1px 0 rgba(0,0,0,.9); line-height: 1.05;
+}
+.hub-tag .tag-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 3px;
+}
+/* DISCIPLINE DE L'ACCENT au QG : trois zones ambre — la plaque COMBATTRE, le
+   cran courant du rail, le filet du défi du jour. Le chiffre de puissance et le
+   solde de la bourse passent en crème : ce sont des lectures, pas des appels. */
+.hub-tag .tag-row b {
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 19px;
+  color: var(--cream); font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 0 rgba(0,0,0,.9);
+}
+.hub-tag .tag-ser {
+  margin-top: 2px; font-family: 'Barlow Condensed', sans-serif; font-weight: 600;
+  font-size: 12px; letter-spacing: .12em; color: var(--muted);
+}
+
+/* le bouton d'action dit contre QUI on part */
+#hub-fight .f-txt { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; line-height: 1.02; }
+#hub-fight .fight-t { font-size: 20px; letter-spacing: .04em; }
+#hub-fight .f-sub {
+  font-size: 12px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: rgba(43,17,3,.66); text-shadow: 0 1px 0 rgba(255,230,180,.35);
+}
+#hub-fight:disabled .f-sub { color: var(--ghost); text-shadow: none; }
+
+/* ---------------------------------------------------------------------------
+   CHARGEMENT — une console de mise en route, pas une barre muette
+   L'écran affichait « chargement » et rien d'autre pendant deux secondes : ni
+   le lieu, ni le jeu, ni le moindre signe que quelque chose se passait.
+   --------------------------------------------------------------------------- */
+.load-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 5px; }
+.load-pct {
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 13px;
+  color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.load-pct b { font-size: 25px; color: var(--signal-hi); text-shadow: 0 1px 0 #000, 0 0 12px rgba(255,180,40,.45); }
+.load-step {
+  margin-bottom: 7px; font-family: 'Barlow Condensed', sans-serif; font-weight: 600;
+  font-size: 13px; letter-spacing: .06em; color: var(--cream-2);
+  text-shadow: 0 1px 0 rgba(0,0,0,.9); min-height: 15px;
+}
+
+/* ---------------------------------------------------------------------------
+   ARÈNE — LA CARTE VEDETTE
+   L'écran alignait quatorze cartes de poids strictement égal : aucun point
+   focal, et rien ne disait par où commencer. Le prochain adversaire prend la
+   tête, en grand, avec sa jauge de menace et l'écart chiffré contre ta machine.
+   --------------------------------------------------------------------------- */
+.rc-hero {
+  grid-column: 1 / -1; position: relative; display: grid; gap: 9px;
+  grid-template-columns: 132px 1fr; padding: 10px;
+  filter: drop-shadow(0 3px 0 rgba(0,0,0,.7)) drop-shadow(0 14px 22px rgba(0,0,0,.6));
+  clip-path: polygon(11px 0, 100% 0, 100% calc(100% - 11px), calc(100% - 11px) 100%, 0 100%, 0 11px);
+  background: linear-gradient(179deg, rgba(255,205,150,.10), transparent 30%), var(--brushed),
+    linear-gradient(180deg, #322A24, #17130F 72%, #121010);
+  box-shadow: inset 0 1.5px 0 var(--edge-hi), inset 0 -2px 0 rgba(0,0,0,.9),
+    inset 0 0 0 1.5px var(--signal), inset 0 0 22px rgba(255,196,0,.10);
+}
+.rc-hero.boss { box-shadow: inset 0 1.5px 0 rgba(255,224,160,.4), inset 0 -2px 0 rgba(0,0,0,.9),
+  inset 0 0 0 2px var(--r4), inset 0 0 26px rgba(255,150,40,.20); }
+.rc-hero.hard { box-shadow: inset 0 1.5px 0 var(--edge-hi), inset 0 -2px 0 rgba(0,0,0,.9),
+  inset 0 0 0 1.5px rgba(255,59,34,.6), inset 0 0 22px rgba(255,60,30,.10); }
+.rc-hero img {
+  width: 132px; height: 100px; object-fit: contain; padding: 3px;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  background: radial-gradient(84% 82% at 50% 0%, rgba(255,192,116,.38), rgba(255,150,60,.09) 58%, transparent 86%),
+    linear-gradient(180deg, #473C33 0%, #2E2822 48%, #17130F 100%);
+  box-shadow: inset 0 2px 0 rgba(255,228,188,.40), inset 0 -2px 0 rgba(0,0,0,.9), inset 0 0 0 1px rgba(0,0,0,.75);
+}
+.hero-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.hero-head { display: flex; align-items: center; gap: 8px; }
+.hero-head b {
+  flex: 1; min-width: 0; font-family: 'Barlow Condensed', sans-serif; font-weight: 700;
+  font-size: 20px; letter-spacing: .02em; color: var(--cream);
+  text-shadow: 0 1px 0 rgba(0,0,0,.9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hero-head .rc-diff { position: static; }
+.rc-diff.even { background: linear-gradient(180deg, #CBB89C, #8D7E6D); color: #1B1610; }
+.hero-stat { display: grid; grid-template-columns: 34px 1fr auto auto; align-items: center; gap: 7px; }
+/* la gorge de jauge occupe toute la largeur dans la console du garage : ici
+   elle doit rester dans sa colonne */
+.hero-stat .rbar { grid-column: auto; height: 7px; }
+.hero-stat b {
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 16px;
+  color: var(--cream); font-variant-numeric: tabular-nums;
+}
+.hero-stat .vd { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 12px; min-width: 34px; text-align: right; }
+.hero-stat.hp .rbar u { background: linear-gradient(180deg, #FF9270, #FF3B22 55%, #8A1103); }
+.hero-stat.atk .rbar u { background: linear-gradient(180deg, #FFD680, #FF9A22 55%, #B8420A); }
+/* jauge de menace : une seule lecture, du vert au rouge */
+.hero-menace { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: 7px; margin-top: 1px; }
+.mn-track {
+  position: relative; height: 8px; overflow: hidden;
+  background: linear-gradient(90deg, rgba(149,219,59,.22), rgba(255,196,0,.22) 52%, rgba(255,59,34,.26));
+  box-shadow: inset 0 1.5px 3px rgba(0,0,0,.9), inset 0 0 0 1px rgba(0,0,0,.75);
+}
+.mn-track i {
+  display: block; height: 100%;
+  background: linear-gradient(90deg, #95DB3B, #FFC400 52%, #FF3B22);
+  box-shadow: 0 0 9px -1px rgba(255,140,40,.7);
+}
+.hero-go { grid-column: 1 / -1; width: 100%; padding: 13px 8px; font-size: 15px; }
+/* filet de séparation avant le reste du groupe */
+.roster-rule { grid-column: 1 / -1; display: flex; align-items: center; gap: 9px; margin: 4px 0 0; }
+.roster-rule i {
+  flex: 1; height: 1px;
+  background: linear-gradient(90deg, rgba(255,214,170,.16), transparent);
+  box-shadow: 0 1px 0 rgba(0,0,0,.7);
+}
+
+/* deux fractions « x/8 » côte à côte désignaient deux quantités sans rapport —
+   les étapes de la ligue et les médailles de promotion */
+.champ-num small { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
+#hub-medals small { margin-left: 3px; font-size: 10px; letter-spacing: .12em; opacity: .7; }
+
+/* ---------------------------------------------------------------------------
+   BARRE D'ONGLETS — la clé du QG a sa propre silhouette
+   La classe .home existait dans le markup et AUCUNE règle ne la lisait : les
+   cinq onglets étaient cinq rectangles identiques, seule l'icône changeait.
+   Et l'onglet actif ne se signalait que par un filet : il lui manquait un état
+   PHYSIQUE, la plaque qui sort de la console.
+   --------------------------------------------------------------------------- */
+.tabbtn.home {
+  flex: 1.16; --ch: 14px;
+  background: linear-gradient(180deg, #0C0A09, #171310);
+  box-shadow: inset 0 2px 5px rgba(0,0,0,.9), inset 0 0 0 1px rgba(0,0,0,.8);
+  clip-path: polygon(var(--ch) 0, 100% 0, 100% calc(100% - var(--ch)), calc(100% - var(--ch)) 100%, 0 100%, 0 var(--ch));
+}
+.tabbtn.active { transform: translateY(-3px); }
+.tabbtn.home.active {
+  background: linear-gradient(180deg, rgba(255,150,60,.20), rgba(255,120,20,.03) 62%, transparent);
+}
+.tabbtn:active { transform: translateY(0); }
+
+/* ---------------------------------------------------------------------------
+   VERDICT D'ÉNERGIE — le jeu DIT quoi faire
+   Le dépassement n'était annoncé que par un « ⚡! » de 12 px, et la pièce
+   restait montable : la seule contrainte dure du montage n'en était donc pas
+   une. Une pièce trop chère est maintenant purement immontable, et l'écran
+   énonce le geste correctif.
+   --------------------------------------------------------------------------- */
+.part-verdict {
+  display: flex; align-items: center; gap: 11px; margin: 0 0 12px; padding: 10px 12px 11px;
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+  background: linear-gradient(180deg, #26100B, #150907);
+  box-shadow: inset 0 1px 0 rgba(255,150,120,.20), inset 0 0 0 1.5px rgba(255,59,34,.55);
+}
+.part-verdict .ic { width: 24px; height: 24px; flex: none; color: var(--bad-hi); }
+.part-verdict .pv-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.part-verdict .pv-txt b {
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 14px;
+  letter-spacing: .12em; text-transform: uppercase; color: #FFC5B4;
+}
+.part-verdict .pv-txt em {
+  font-style: normal; font-size: 12.5px; font-weight: 600; color: var(--cream-2);
+}
+.part-verdict .pv-num {
+  flex: none; font-family: 'Barlow Condensed', sans-serif; font-weight: 700;
+  font-size: 26px; line-height: 1; color: var(--bad-hi); font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 0 #000, 0 0 12px rgba(255,60,30,.5);
+}
+.part-verdict .pv-num small { font-size: 14px; color: var(--muted); }

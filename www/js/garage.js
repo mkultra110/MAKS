@@ -1,6 +1,6 @@
 // Écran garage : aperçu 3D du véhicule, emplacements, inventaire, fiche pièce.
 import * as THREE from 'three';
-import { KIND_LABEL, partDef, partStats, maxLevel, upgradeCost, recycleValue, COPILOTS, STICKERS, LEAGUES, leagueIndex } from './data.js';
+import { KIND_LABEL, partDef, partStats, maxLevel, upgradeCost, recycleValue, COPILOTS, STICKERS, LEAGUES, leagueIndex, bodyEnergy } from './data.js';
 import { state, save, isEquipped, buildLoadout, computeCarStats, loadoutValid, activeSets, equip, unequip, removePart, getPart, stickerOwned, MEDALS_TO_ADVANCE } from './state.js';
 import { buildCarSpec } from './car.js';
 import { createRenderer, createStudioScene, disposeModel } from './render3d.js';
@@ -230,6 +230,28 @@ function closeCopilotSheet() {
 // La PUISSANCE est une synthèse, pas une nouvelle statistique de jeu : elle ne
 // sert qu'à trancher d'un coup d'œil « ce montage est-il meilleur ? ». L'attaque
 // pèse plus lourd que les PV parce qu'un combat se gagne en tapant.
+export // Énergie consommée et capacité APRÈS montage de `part`. Sert à interdire un
+// montage qui dépasserait la capacité du châssis : une pièce trop chère doit
+// être purement immontable, sinon la contrainte n'en est pas une et le montage
+// cesse d'être un casse-tête pour redevenir un empilement.
+// Exception assumée : un CHÂSSIS reste toujours montable même s'il réduit la
+// capacité — sinon le joueur se retrouverait enfermé, incapable de changer de
+// corps sans avoir d'abord démonté ses armes à l'aveugle.
+function energyAfter(lo, part) {
+  const st = computeCarStats(lo);
+  if (part.kind === 'body') return { used: st.used, capacity: bodyEnergy(part), hard: false };
+  if (part.kind !== 'weapon' && part.kind !== 'gadget') return { used: st.used, capacity: st.capacity, hard: false };
+  const arr = part.kind === 'weapon' ? lo.weapons : lo.gadgets;
+  const slots = lo.body ? (part.kind === 'weapon' ? partDef(lo.body).weaponSlots : partDef(lo.body).gadgetSlots) : 0;
+  const cost = partDef(part).energy || 0;
+  // s'il reste un emplacement libre la pièce s'ajoute ; sinon elle en remplace une
+  const replaced = arr.length >= slots && arr.length ? (partDef(arr[0]).energy || 0) : 0;
+  return { used: st.used - replaced + cost, capacity: st.capacity, hard: true };
+}
+
+// La PUISSANCE est une synthèse, pas une nouvelle statistique de jeu : elle ne
+// sert qu'à trancher d'un coup d'œil « ce montage est-il meilleur ? ». L'attaque
+// pèse plus lourd que les PV parce qu'un combat se gagne en tapant.
 export function machinePower(stats) {
   return Math.round(stats.hp + stats.atk * 3);
 }
@@ -247,7 +269,7 @@ export function renderGarage() {
   const li = leagueIndex(state.stage);
   const chip = document.getElementById('stage-label');
   const prestige = state.prestige > 0 ? `★${state.prestige} · ` : '';
-  chip.textContent = `${prestige}${LEAGUES[li].name} · Ét. ${state.stage}`;
+  chip.textContent = `${prestige}Ligue ${LEAGUES[li].name} · Étape ${state.stage}`;
   chip.parentElement.querySelector('.ic').style.color = LEAGUES[li].color;
   document.getElementById('stage-fill').style.width =
     (state.medals.length / MEDALS_TO_ADVANCE * 100) + '%';
@@ -608,9 +630,22 @@ function openSheet(part) {
     }
   }
 
+  // VERDICT D'ÉNERGIE : le jeu dit quoi faire, il ne se contente pas de rougir.
+  const verdict = document.getElementById('part-verdict');
+  const after = equipped ? null : energyAfter(lo, part);
+  const overload = !!after && after.used > after.capacity;
+  verdict.className = 'part-verdict' + (overload ? '' : ' hidden');
+  verdict.innerHTML = overload
+    ? `<svg class="ic"><use href="#i-bolt"/></svg>` +
+      `<span class="pv-txt"><b>Surcharge d'énergie</b>` +
+      `<em>${after.hard ? 'Retire une arme ou un gadget, ou choisis plus léger.' : 'Ce châssis ne tiendra pas ton montage actuel.'}</em></span>` +
+      `<span class="pv-num">${after.used}<small>/${after.capacity}</small></span>`
+    : '';
+
   const btnEquip = document.getElementById('btn-equip');
-  btnEquip.textContent = equipped ? (part.kind === 'body' ? 'Équipé' : 'Retirer') : 'Équiper';
-  btnEquip.disabled = equipped && part.kind === 'body';
+  btnEquip.textContent = equipped ? (part.kind === 'body' ? 'Équipé' : 'Retirer')
+    : (overload && after.hard ? 'Énergie insuffisante' : 'Équiper');
+  btnEquip.disabled = (equipped && part.kind === 'body') || (overload && after.hard);
 
   const btnUp = document.getElementById('btn-upgrade');
   // HIÉRARCHIE BASCULANTE : sur une pièce à monter, l'action dominante est

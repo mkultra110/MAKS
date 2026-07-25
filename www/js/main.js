@@ -11,7 +11,7 @@ import { preloadAssets } from './assets.js';
 import { createRenderer, createStudioScene, addHubDecor, disposeModel, FLOOR_Y } from './render3d.js';
 import { createCarModel, poseCarStatic, catMascot, stickerTexture } from './models3d.js';
 import { carSnapshot, partThumb, avatarThumb, copilotThumb } from './thumbs.js';
-import { initGarage, renderGarage, startPreview, stopPreview } from './garage.js';
+import { initGarage, renderGarage, startPreview, stopPreview, machinePower } from './garage.js';
 import { startBattle } from './battle.js';
 import {
   unlockAudio, handleVisibility, setMuted, sfxClick, sfxWin, sfxLose,
@@ -229,19 +229,54 @@ function pokeMascot() {
   mascotState.bubbleTimer = setTimeout(() => bubble.classList.add('hidden'), 2600);
 }
 
+// Noms d'écurie : la même table que le garage, exposée ici pour l'étiquette du QG.
+const MACHINE_NAMES = {
+  classic: 'Le Matou Turbo', titan: 'Le Gros Costaud', surfer: 'La Planche Filante',
+  whale: 'La Baleine Blindée', pony: 'Le Poney Fou',
+};
+const STAGES_PER_LEAGUE = 8;
+function hubSerial(id) {
+  let h = 0;
+  for (let i = 0; i < String(id).length; i++) h = (h * 31 + String(id).charCodeAt(i)) & 0xffff;
+  return String(h % 10000).padStart(4, '0');
+}
+
 function renderHub() {
   document.getElementById('hub-coins').textContent = state.coins;
   document.getElementById('profile-name').textContent = pName();
   document.getElementById('profile-level').textContent = 'NIV. ' + (1 + Math.floor(state.totalWins / 5));
   document.getElementById('profile-avatar').src = avatarThumb(COPILOTS[state.copilot]?.color ?? 0xffd9a0, state.copilot);
   document.getElementById('hub-medals').innerHTML =
-    `<svg class="ic"><use href="#i-medal"/></svg>${state.medals.length}/${MEDALS_TO_ADVANCE}`;
-  document.getElementById('hub-fight-label').textContent = `COMBATTRE · ÉTAPE ${state.stage}`;
+    `<svg class="ic"><use href="#i-medal"/></svg>${state.medals.length}/${MEDALS_TO_ADVANCE}<small>méd.</small>`;
+  document.getElementById('hub-fight-label').textContent = 'COMBATTRE';
   const li = leagueIndex(state.stage);
-  const stageChip = document.getElementById('hub-stage');
-  stageChip.textContent = `${state.prestige > 0 ? `★${state.prestige}·` : ''}Ét. ${state.stage}`;
-  stageChip.parentElement.querySelector('.ic').style.color = LEAGUES[li].color;
-  const valid = loadoutValid(buildLoadout());
+  document.getElementById('hub-fight-sub').textContent =
+    `Ligue ${LEAGUES[li].name} · Étape ${state.stage}${state.prestige > 0 ? ` · ★${state.prestige}` : ''}`;
+
+  // RAIL DE CHAMPIONNAT : les 8 étapes de la ligue, battues / en cours / à venir.
+  // « Ét. 3 » seul ne disait ni d'où l'on vient ni ce qu'il reste à faire.
+  const rail = document.getElementById('hub-rail');
+  const stageInLeague = ((state.stage - 1) % STAGES_PER_LEAGUE) + 1;
+  rail.innerHTML = '';
+  for (let i = 1; i <= STAGES_PER_LEAGUE; i++) {
+    const pip = document.createElement('i');
+    pip.className = i < stageInLeague ? 'done' : (i === stageInLeague ? 'now' : '');
+    rail.appendChild(pip);
+  }
+  document.getElementById('hub-stage').textContent = stageInLeague;
+  rail.parentElement.querySelector('.ic').style.color = LEAGUES[li].color;
+
+  // ÉTIQUETTE DE LA MACHINE : elle était le seul contenu réellement beau de
+  // l'écran, et rien ne la nommait ni ne la chiffrait.
+  const lo = buildLoadout();
+  const st = computeCarStats(lo);
+  document.getElementById('hub-machine-name').textContent =
+    lo.body ? (MACHINE_NAMES[lo.body.type] || 'La Machine') : '—';
+  document.getElementById('hub-machine-power').textContent = machinePower(st).toLocaleString('fr-FR');
+  document.getElementById('hub-machine-serial').textContent =
+    lo.body ? `N° MK-${hubSerial(lo.body.id)} · V${lo.body.level}` : '';
+
+  const valid = loadoutValid(lo);
   document.getElementById('hub-fight').disabled = !valid;
   document.getElementById('hub-quick').disabled = !valid;
   document.getElementById('tab-bet').disabled = state.coins < 10;
@@ -258,8 +293,19 @@ const LOAD_TIPS = [
   'Astuce : tape sur ton chat au hub, il adore ça.',
   'Astuce : la Boutique vend des caisses pleines de pièces.',
 ];
+// Étapes annoncées par la console de chargement : l'écran disait « chargement »
+// et rien d'autre pendant deux secondes, ce qui ne raconte ni le lieu ni le jeu.
+const LOAD_STEPS = [
+  [0.00, 'Alimentation du pont…'],
+  [0.28, 'Chargement des châssis…'],
+  [0.55, 'Montage des roues…'],
+  [0.78, 'Affûtage des armes…'],
+  [0.93, 'Réveil du chat…'],
+];
 function runLoading() {
   const fill = document.getElementById('load-fill');
+  const pctEl = document.getElementById('load-pct');
+  const stepEl = document.getElementById('load-step');
   document.getElementById('load-tip').textContent =
     LOAD_TIPS[Math.floor(Math.random() * LOAD_TIPS.length)];
   const t0 = performance.now();
@@ -277,7 +323,12 @@ function runLoading() {
     let p = Math.min(0.92, el / MIN);
     if (ready && el >= MIN) p = 1;
     // progression crantée façon stop-motion
-    fill.style.width = Math.round(Math.floor(p * 14) / 14 * 100) + '%';
+    const q = Math.floor(p * 14) / 14; // progression crantée façon stop-motion
+    fill.style.width = Math.round(q * 100) + '%';
+    pctEl.textContent = Math.round(q * 100);
+    for (let i = LOAD_STEPS.length - 1; i >= 0; i--) {
+      if (q >= LOAD_STEPS[i][0]) { stepEl.textContent = LOAD_STEPS[i][1]; break; }
+    }
     if (p >= 1) { setTimeout(() => show('screen-hub'), 160); return; }
     requestAnimationFrame(step);
   };
@@ -366,7 +417,8 @@ function statLine(lo, boost = 1) {
 // ---------- championnat : le groupe des 14 joueurs ----------
 function renderRoster() {
   const li = leagueIndex(state.stage);
-  document.getElementById('roster-title').textContent = `Étape ${state.stage} — Ligue ${LEAGUES[li].name}`;
+  // un seul gabarit de libellé dans tout le jeu : « LIGUE X · ÉTAPE N »
+  document.getElementById('roster-title').textContent = `Ligue ${LEAGUES[li].name} · Étape ${state.stage}`;
   document.getElementById('roster-sub').textContent =
     `Prends ${MEDALS_TO_ADVANCE} médailles sur ${ROSTER_SIZE} pour être promu !`;
   document.getElementById('roster-medals').textContent = `${state.medals.length}/${MEDALS_TO_ADVANCE}`;
@@ -379,7 +431,63 @@ function renderRoster() {
   const ps = computeCarStats(buildLoadout());
   const playerScore = Math.max(1, ps.hp * ps.atk);
   const nextIdx = roster.find(o => !state.medals.includes(o.idx))?.idx;
+
+  // CARTE VEDETTE — l'écran alignait quatorze cartes de poids strictement égal :
+  // aucun point focal, et rien ne disait par où commencer. Le prochain
+  // adversaire prend la tête, en grand, avec sa jauge de menace et sa mise.
+  const nextOpp = roster.find(o => o.idx === nextIdx);
+  if (nextOpp) {
+    const os = computeCarStats(nextOpp.loadout);
+    const ratio = (os.hp * nextOpp.statBoost * os.atk * nextOpp.dmgBoost) / playerScore;
+    const lvl = Math.max(0, Math.min(1, (Math.log2(ratio) + 1.6) / 3.2)); // 0 = proie, 1 = danger
+    const diff = nextOpp.boss ? 'boss' : (ratio < 0.75 ? 'easy' : (ratio > 1.4 ? 'hard' : ''));
+    const hero = document.createElement('div');
+    hero.className = 'rc-hero' + (diff ? ' ' + diff : '');
+    const img = document.createElement('img');
+    img.src = carSnapshot(nextOpp.loadout, { dir: -1, w: 300, h: 200, podium: false });
+    img.alt = nextOpp.name;
+    hero.appendChild(img);
+    const body = document.createElement('div');
+    body.className = 'hero-body';
+    const head = document.createElement('div');
+    head.className = 'hero-head';
+    head.innerHTML = `<b>${nextOpp.name}</b><span class="rc-diff ${diff || 'even'}">${
+      nextOpp.boss ? 'BOSS' : (diff === 'easy' ? 'FACILE' : diff === 'hard' ? 'COSTAUD' : 'À TA MESURE')}</span>`;
+    body.appendChild(head);
+    const st = computeCarStats(nextOpp.loadout);
+    for (const [lab, mine, theirs, cls] of [
+      ['PV', ps.hp, Math.round(st.hp * nextOpp.statBoost), 'hp'],
+      ['ATQ', ps.atk, Math.round(st.atk * nextOpp.dmgBoost), 'atk'],
+    ]) {
+      const row = document.createElement('div');
+      row.className = 'hero-stat ' + cls;
+      const d = theirs - mine;
+      row.innerHTML = `<span class="stencil">${lab}</span>` +
+        `<div class="rbar"><u style="width:${Math.max(4, Math.min(100, theirs / Math.max(mine, theirs) * 100))}%"></u></div>` +
+        `<b>${theirs}</b><span class="vd ${d > 0 ? 'dn' : 'up'}">${d > 0 ? '▲' : '▼'}${Math.abs(d)}</span>`;
+      body.appendChild(row);
+    }
+    const menace = document.createElement('div');
+    menace.className = 'hero-menace';
+    menace.innerHTML = `<span class="stencil">Menace</span><div class="mn-track"><i style="width:${Math.round(lvl * 100)}%"></i></div>`;
+    body.appendChild(menace);
+    hero.appendChild(body);
+    const go = document.createElement('button');
+    go.className = 'btn primary hero-go';
+    go.innerHTML = '<svg class="ic"><use href="#i-sword"/></svg> COMBATTRE';
+    go.addEventListener('click', () => { sfxClick(); gotoVs(false, nextOpp); });
+    hero.appendChild(go);
+    list.appendChild(hero);
+    const rule = document.createElement('div');
+    rule.className = 'roster-rule';
+    rule.innerHTML = `<span class="stencil">Reste du groupe</span><i></i><span class="stencil">${
+      roster.length - state.medals.length - 1}</span>`;
+    list.appendChild(rule);
+  }
+
   roster.forEach((opp, i) => {
+    if (opp.idx === nextIdx) return; // déjà en vedette
+
     const beaten = state.medals.includes(opp.idx);
     const os = computeCarStats(opp.loadout);
     const ratio = (os.hp * opp.statBoost * os.atk * opp.dmgBoost) / playerScore;
@@ -391,8 +499,12 @@ function renderRoster() {
     // la MACHINE adverse, posée dans son puits éclairé. Pas de fond teinté à la
     // couleur du chat : quatorze teintes arbitraires empêchaient de comparer la
     // seule chose qui compte ici, les machines elles-mêmes.
+    // le puits s'allume à la couleur du PALIER de la machine adverse, pas en
+    // ambre : quatorze alcôves chaudes identiques ne disaient rien et posaient
+    // quatorze taches sur un écran qui sert à comparer des machines
+    el.style.setProperty('--rc', `var(--r${Math.min(5, Math.max(1, opp.loadout.body?.stars || 1))})`);
     const img = document.createElement('img');
-    img.src = carSnapshot(opp.loadout, { dir: -1, w: 128, h: 96, podium: false });
+    img.src = carSnapshot(opp.loadout, { dir: -1, w: opp.boss ? 200 : 128, h: opp.boss ? 150 : 96, podium: false });
     img.alt = opp.name;
     el.appendChild(img);
     const info = document.createElement('div');
@@ -407,10 +519,12 @@ function renderRoster() {
     info.appendChild(st);
     el.appendChild(info);
     if (diff && !beaten) {
-      const tag = document.createElement('div');
+      // le badge vit DANS le flux : posé en absolu il mordait soit sur le nom,
+      // soit sur la ligne de statistiques selon la longueur du nom
+      const tag = document.createElement('span');
       tag.className = 'rc-diff ' + diff;
       tag.textContent = opp.boss ? 'BOSS' : (diff === 'easy' ? 'FACILE' : 'COSTAUD');
-      el.appendChild(tag);
+      info.appendChild(tag);
     }
     if (!beaten && opp.idx === nextIdx) {
       const tag = document.createElement('div');
@@ -766,10 +880,14 @@ function betOdds(pair) {
 
 function openBets(fresh = true) {
   if (fresh) {
-    betPair = {
-      a: makeOpponent(state.stage, Math.floor(Math.random() * ROSTER_SIZE), true),
-      b: makeOpponent(state.stage, Math.floor(Math.random() * ROSTER_SIZE) + 20, true),
-    };
+    const a = makeOpponent(state.stage, Math.floor(Math.random() * ROSTER_SIZE), true);
+    // les noms sont tirés d'une table : sans ce garde-fou l'affiche pouvait
+    // annoncer « Marquis Griffe contre Marquis Griffe »
+    let b = null;
+    for (let k = 0; k < 8 && (!b || b.name === a.name); k++) {
+      b = makeOpponent(state.stage, Math.floor(Math.random() * ROSTER_SIZE) + 20 + k * 7, true);
+    }
+    betPair = { a, b };
   }
   const odds = betOdds(betPair);
   document.getElementById('bet-img-a').src = carSnapshot(betPair.a.loadout, { dir: 1, w: 360, h: 220 });
