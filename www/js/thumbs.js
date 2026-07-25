@@ -1,6 +1,6 @@
 // Vignettes 3D (pièces et véhicules) rendues hors-écran, avec cache.
 import * as THREE from 'three';
-import { createRenderer, studioLights, disposeModel, toonGradient, INK } from './render3d.js';
+import { createRenderer, disposeModel, toonGradient, INK } from './render3d.js';
 import { createPartModel, createCarModel, poseCarStatic, catHead } from './models3d.js';
 import { buildCarSpec } from './car.js';
 import { COPILOTS } from './data.js';
@@ -16,16 +16,24 @@ function ensure() {
   renderer.setPixelRatio(1);
   scene = new THREE.Scene();
   scene.background = null;
-  studioLights(scene);
+  // éclairage PROPRE aux vignettes : elles se lisent sur des cartes d'acier sombre,
+  // donc les pièces doivent rester franches (l'ambiance nocturne les noierait)
+  scene.add(new THREE.AmbientLight(0xFFF1DC, 0.82));
+  const key = new THREE.DirectionalLight(0xFFF6E4, 1.35);
+  key.position.set(4, 9, 7);
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(0xFFB870, 0.45); // appoint ambré : ancre la pièce dans la DA
+  fill.position.set(-5, 2, 3);
+  scene.add(fill);
   podium = new THREE.Group();
   const top = new THREE.Mesh(
     new THREE.CylinderGeometry(2.6, 2.8, 0.3, 40),
-    new THREE.MeshToonMaterial({ color: 0xffb800, gradientMap: toonGradient() })
+    new THREE.MeshToonMaterial({ color: 0xFF8A1F, gradientMap: toonGradient() })
   );
-  // jupe d'encre : le podium garde un contour même en vignette
+  // socle sombre : le podium garde un contour même en vignette
   const skirt = new THREE.Mesh(
     new THREE.CylinderGeometry(2.84, 2.84, 0.08, 40),
-    new THREE.MeshBasicMaterial({ color: INK })
+    new THREE.MeshBasicMaterial({ color: 0x0B0907 })
   );
   skirt.position.y = -0.14;
   podium.add(top, skirt);

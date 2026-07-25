@@ -533,7 +533,7 @@ export function startBattle(config) {
     overlay: document.getElementById('battle-overlay'),
   };
   current = battle;
-  if (localStorage.getItem('maks_debug')) window.__battle = battle;
+  if (localStorage.getItem('maks_debug')) { window.__battle = battle; battle.renderer = renderer; }
 
   // mutateurs du Défi du jour (appliqués aux DEUX camps, équitable)
   battle.mutator = mutator;
