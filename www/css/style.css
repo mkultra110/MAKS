@@ -1018,12 +1018,12 @@ body {
   pointer-events: none;
 }
 .energy-track {
-  display: flex; gap: 3px; background: transparent !important;
+  display: flex; gap: 2px; min-width: 92px; background: transparent !important;
   border: none !important; overflow: visible !important;
 }
 .eseg {
   flex: 1; min-width: 5px; max-width: 14px; height: 100%;
-  background: var(--creux); border: 2px solid var(--ink); border-radius: 4px;
+  background: var(--creux); border: 1.5px solid var(--ink); border-radius: 3px;
 }
 .eseg.on { background: var(--sun); }
 .eseg.over { background: var(--pow); }

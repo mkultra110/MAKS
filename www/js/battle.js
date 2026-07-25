@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import { buildCarSpec } from './car.js';
 import { copilotMods, activeSets } from './state.js';
 import { COPILOTS, WHEELS, partMult, partDef } from './data.js';
-import { createRenderer, disposeModel, makeBlobShadow, INK } from './render3d.js';
-import { createCarModel, createArena, createDeathWall, skyTexture, addSkyDecor, pulseLaserLens, toonMat, ARENA_THEMES, S } from './models3d.js';
+import { createRenderer, disposeModel, makeBlobShadow, INK, toonGradient } from './render3d.js';
+import { createCarModel, createArena, createDeathWall, skyTexture, addSkyDecor, pulseLaserLens, toonMat, kerbTexture, ARENA_THEMES, S } from './models3d.js';
 import {
   sfxHit, sfxBoom, sfxLaser, sfxShot, sfxRocket, sfxCount, sfxGo, sfxSiren, sfxClang,
   startBattleAudio, stopBattleAudio, setEngineSpeed, crowdExcite, startMusic, stopMusic,
@@ -151,7 +151,7 @@ function buildScene(battle, themeIndex = 0) {
   const theme = ARENA_THEMES[Math.min(themeIndex, ARENA_THEMES.length - 1)];
   const scene = new THREE.Scene();
   scene.background = skyTexture(theme);
-  scene.fog = new THREE.Fog(theme.fog, 55, 140);
+  scene.fog = new THREE.Fog(theme.fog, 30, 90);
 
   // éclairage cartoon : une ambiance + un soleil, les aplats font le reste
   scene.add(new THREE.AmbientLight(0xffffff, 0.55));
@@ -175,12 +175,87 @@ function buildScene(battle, themeIndex = 0) {
     shell.rotation.copy(mesh.rotation);
     scene.add(shell);
   };
+
+  // décor « samedi matin » des collines : glaçage à pois, vibreur de crête, touffes.
+  // UNE texture et UN modèle de touffe par buildScene, partagés entre les collines.
+  const hillLight = new THREE.Color(hillColor).lerp(new THREE.Color(0xffffff), 0.16);
+  let hillFaceTex = null;
+  const hillFaceTexture = () => {
+    if (hillFaceTex) return hillFaceTex;
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 256;
+    const x = c.getContext('2d');
+    x.fillStyle = '#' + hillLight.getHexString();
+    x.fillRect(0, 0, 256, 256);
+    // 6 pois un ton plus foncé que la colline
+    x.fillStyle = '#' + new THREE.Color(hillColor).multiplyScalar(0.85).getHexString();
+    for (const [px, py] of [[42, 58], [148, 36], [222, 118], [70, 172], [182, 204], [120, 108]]) {
+      x.beginPath();
+      x.ellipse(px, py, 14, 14, 0, 0, Math.PI * 2);
+      x.fill();
+    }
+    // 3 fleurs : 5 pétales crème autour d'un cœur jaune
+    for (const [fx, fy] of [[96, 152], [204, 60], [58, 226]]) {
+      x.fillStyle = '#FFF6E0';
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        x.beginPath();
+        x.arc(fx + Math.cos(a) * 9, fy + Math.sin(a) * 9, 8, 0, Math.PI * 2);
+        x.fill();
+      }
+      x.fillStyle = '#FFB800';
+      x.beginPath();
+      x.arc(fx, fy, 5, 0, Math.PI * 2);
+      x.fill();
+    }
+    hillFaceTex = new THREE.CanvasTexture(c);
+    hillFaceTex.colorSpace = THREE.SRGBColorSpace;
+    return hillFaceTex;
+  };
+  let tuftModel = null;
+  const tuftTemplate = () => {
+    if (tuftModel) return tuftModel;
+    tuftModel = new THREE.Group();
+    const tuftGeo = new THREE.ConeGeometry(0.10, 0.26, 5);
+    const tuftMat = toonMat(new THREE.Color(theme.ground).multiplyScalar(0.7));
+    [-0.35, 0, 0.35].forEach((lean, i) => {
+      const blade = new THREE.Mesh(tuftGeo, tuftMat);
+      blade.position.set((i - 1) * 0.07, 0.08, 0);
+      blade.rotation.z = lean;
+      tuftModel.add(blade);
+    });
+    return tuftModel;
+  };
+
   for (const t of battle.terrain) {
     if (t.type === 'bump') {
       const cyl = new THREE.Mesh(new THREE.CylinderGeometry(t.r * S, t.r * S, 6, 36), toonMat(hillColor));
       cyl.rotation.x = Math.PI / 2;
       cyl.position.set(to3x(t.x), to3y(GROUND_Y + t.r - t.drop), 0);
       addWithOutline(cyl, new THREE.CylinderGeometry(t.r * S + 0.07, t.r * S + 0.07, 6.06, 36));
+      const R = t.r * S, C = cyl.position;
+      // glaçage : pastille claire à pois posée au-dessus du cap de la coque d'encre (z=3.03)
+      const icing = new THREE.Mesh(
+        new THREE.CircleGeometry(R - 0.12, 36),
+        new THREE.MeshToonMaterial({ color: hillLight, gradientMap: toonGradient(), map: hillFaceTexture() })
+      );
+      icing.position.set(C.x, C.y, 3.06);
+      scene.add(icing);
+      // vibreur de crête : arc damier rouge/crème centré au sommet
+      const kerb = new THREE.Mesh(
+        new THREE.TorusGeometry(R + 0.02, 0.10, 8, 48, Math.PI * 0.5),
+        new THREE.MeshBasicMaterial({ map: kerbTexture(8) })
+      );
+      kerb.rotation.z = Math.PI / 4;
+      kerb.position.set(C.x, C.y, 3.0);
+      scene.add(kerb);
+      // touffes d'herbe plantées sur la crête (angles depuis la verticale)
+      for (const a of [-0.5, 0.15, 0.7]) {
+        const tuft = tuftTemplate().clone();
+        tuft.position.set(C.x + Math.sin(a) * R, C.y + Math.cos(a) * R, 2.6);
+        tuft.rotation.z = -a;
+        scene.add(tuft);
+      }
     } else if (t.type === 'plateau') {
       const box = new THREE.Mesh(new THREE.BoxGeometry(t.w * S, t.h * S + 0.3, 6), toonMat(rampColor));
       box.position.set(to3x(t.x), to3y(GROUND_Y - t.h / 2) - 0.1, 0);
@@ -199,6 +274,19 @@ function buildScene(battle, themeIndex = 0) {
       edge.rotation.z = -t.angle;
       scene.add(edge);
     }
+  }
+
+  // collines-boules d'horizon : cassent la ligne sol/ciel devant la skyline
+  const hillBallGeo = new THREE.SphereGeometry(6, 16, 10);
+  const hillBallMat = new THREE.MeshToonMaterial({
+    color: new THREE.Color(theme.ground).lerp(new THREE.Color(theme.fog), 0.5),
+    gradientMap: toonGradient(),
+  });
+  for (const hx of [-23, -12.4, -4.8, 5.9, 13.2, 24]) {
+    const ball = new THREE.Mesh(hillBallGeo, hillBallMat);
+    ball.scale.set(1.6, 0.5, 1);
+    ball.position.set(hx, 0, -28);
+    scene.add(ball);
   }
 
   // véhicules
@@ -834,7 +922,7 @@ function step(battle, dt, onEnd) {
     sfxSiren();
     // couleur des murs figée ici (une fois) ; seule l'intensité est animée ensuite
     for (const w3 of [battle.wall3L, battle.wall3R]) {
-      w3.userData.wallMat.emissive.setHex(0x8f1024);
+      w3.userData.wallMat.emissive.setHex(0xFFF6E0); // flash crème, lisible sur le mur POW
     }
     setTimeout(() => battle.lastMsg === 'LES MURS !' && showMsg(battle, ''), 900);
   }
@@ -1467,6 +1555,9 @@ function render(battle, t, dt) {
         crowd.mesh.setMatrixAt(i, crowd.dummy.matrix);
       }
       crowd.mesh.instanceMatrix.needsUpdate = true;
+      // grande roue de la fête foraine : rotation lente au même pas de 12 fps
+      const ferris = battle.env.userData.ferris;
+      if (ferris) ferris.rotation.z = tq2 * 0.15;
     }
   }
 

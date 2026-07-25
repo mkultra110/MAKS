@@ -7,7 +7,7 @@ import {
   ROSTER_SIZE, MEDALS_TO_ADVANCE,
 } from './state.js';
 import { buildCarSpec } from './car.js';
-import { createRenderer, createStudioScene, addHubDecor, disposeModel } from './render3d.js';
+import { createRenderer, createStudioScene, addHubDecor, disposeModel, FLOOR_Y } from './render3d.js';
 import { createCarModel, poseCarStatic, catMascot } from './models3d.js';
 import { carSnapshot, partThumb, avatarThumb, copilotThumb } from './thumbs.js';
 import { initGarage, renderGarage, startPreview, stopPreview } from './garage.js';
@@ -86,7 +86,7 @@ function ensureHub() {
   const holder = new THREE.Group();
   scene.add(holder);
   const mascotHolder = new THREE.Group();
-  mascotHolder.position.set(-2.7, -0.44, 1.5);
+  mascotHolder.position.set(-1.95, 0, 1.15); // SUR le podium, elle présente la machine
   mascotHolder.rotation.y = 0.55;
   scene.add(mascotHolder);
   hub = { renderer, scene, camera, holder, mascotHolder, mascot: null, mascotColor: null, raf: 0, running: false };
@@ -168,8 +168,8 @@ function hubLoop(now) {
   const vFov = hub.camera.fov * Math.PI / 180;
   const hFov = 2 * Math.atan(Math.tan(vFov / 2) * hub.camera.aspect);
   const dist = Math.max(5.6 / (2 * Math.tan(hFov / 2)), 7);
-  hub.camera.position.set(Math.sin(now / 11000) * 1.2, 2.2 + Math.sin(now / 6200) * 0.25, dist);
-  hub.camera.lookAt(-0.5, 0.9, 0);
+  hub.camera.position.set(Math.sin(now / 11000) * 1.2, 2.9 + Math.sin(now / 6200) * 0.25, dist);
+  hub.camera.lookAt(-0.5, 0.55, 0);
   hub.renderer.render(hub.scene, hub.camera);
   // la bulle de dialogue suit la tête de la mascotte
   const bubble = document.getElementById('mascot-bubble');
