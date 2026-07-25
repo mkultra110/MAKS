@@ -1282,7 +1282,7 @@ function raceDecalTexture(num) {
   x.fillRect(-140, 62, 280, 16);
   x.restore();
   x.fillStyle = 'rgba(255,255,255,.95)';
-  x.font = `800 108px 'Baloo 2', sans-serif`;
+  x.font = `800 108px 'Barlow Condensed', sans-serif`;
   x.textAlign = 'center'; x.textBaseline = 'middle';
   x.save();
   x.translate(96, 122); x.rotate(-0.32);
@@ -1305,7 +1305,7 @@ function bannerTexture(text, bg, fg) {
   x.strokeStyle = '#26183A'; x.lineWidth = 12;
   x.strokeRect(6, 6, 500, 116);
   x.fillStyle = fg;
-  x.font = '800 64px "Baloo 2", sans-serif';
+  x.font = '800 64px "Barlow Condensed", sans-serif';
   x.textAlign = 'center'; x.textBaseline = 'middle';
   x.fillText(text, 256, 70);
   const tex = new THREE.CanvasTexture(c);

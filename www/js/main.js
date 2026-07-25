@@ -236,7 +236,7 @@ function renderHub() {
   document.getElementById('profile-avatar').src = avatarThumb(COPILOTS[state.copilot]?.color ?? 0xffd9a0, state.copilot);
   document.getElementById('hub-medals').innerHTML =
     `<svg class="ic"><use href="#i-medal"/></svg>${state.medals.length}/${MEDALS_TO_ADVANCE}`;
-  document.getElementById('hub-fight-label').textContent = `COMBATTRE · Ét. ${state.stage}`;
+  document.getElementById('hub-fight-label').textContent = `COMBATTRE · ÉTAPE ${state.stage}`;
   const li = leagueIndex(state.stage);
   const stageChip = document.getElementById('hub-stage');
   stageChip.textContent = `${state.prestige > 0 ? `★${state.prestige}·` : ''}Ét. ${state.stage}`;

@@ -33,19 +33,43 @@
    ici, jamais de nom ni de fonction.
    ============================================================================ */
 
+/* TYPOGRAPHIE — l'autre moitié du problème « tout est arrondi ».
+   Le jeu tournait entièrement en Baloo 2, une display à terminaisons ARRONDIES :
+   chanfreiner toutes les plaques en gardant cette police revenait à se
+   contredire à chaque ligne de texte. Elle est remplacée par la famille Barlow
+   (OFL, libre pour un usage commercial), dont les terminaisons sont FRANCHES :
+   · Barlow Condensed pour les titres, les chiffres et les étiquettes — c'est
+     une grotesque de signalétique, exactement le registre d'un atelier, et sa
+     chasse étroite fait tenir « CHAMPIONNAT · ÉTAPE 3 » sur 390 px ;
+   · Barlow pour le texte courant, plus lisible en petit corps. */
 @font-face {
-  font-family: 'Baloo 2';
-  src: url('../fonts/baloo-2-latin-400-normal.woff2') format('woff2');
-  font-weight: 400; font-display: swap;
+  font-family: 'Barlow';
+  src: url('../fonts/barlow-latin-500-normal.woff2') format('woff2');
+  font-weight: 500; font-display: swap;
 }
 @font-face {
-  font-family: 'Baloo 2';
-  src: url('../fonts/baloo-2-latin-700-normal.woff2') format('woff2');
+  font-family: 'Barlow';
+  src: url('../fonts/barlow-latin-600-normal.woff2') format('woff2');
+  font-weight: 600; font-display: swap;
+}
+@font-face {
+  font-family: 'Barlow';
+  src: url('../fonts/barlow-latin-700-normal.woff2') format('woff2');
   font-weight: 700; font-display: swap;
 }
 @font-face {
-  font-family: 'Baloo 2';
-  src: url('../fonts/baloo-2-latin-800-normal.woff2') format('woff2');
+  font-family: 'Barlow Condensed';
+  src: url('../fonts/barlow-condensed-latin-600-normal.woff2') format('woff2');
+  font-weight: 600; font-display: swap;
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  src: url('../fonts/barlow-condensed-latin-700-normal.woff2') format('woff2');
+  font-weight: 700; font-display: swap;
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  src: url('../fonts/barlow-condensed-latin-800-normal.woff2') format('woff2');
   font-weight: 800; font-display: swap;
 }
 
@@ -137,7 +161,7 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 button, input { border: 0; background: none; color: inherit; font-family: inherit; }
 button { cursor: pointer; }
 body {
-  font-family: 'Nunito', 'Baloo 2', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Barlow', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   background-color: var(--ink-1);
   background-image:
     radial-gradient(126% 46% at 50% -6%, rgba(255,170,80,.11), rgba(255,120,30,.035) 42%, transparent 72%),
@@ -147,15 +171,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* La typo « atelier » : Baloo 2 sur tout ce qui est titre, bouton, étiquette.
-   Le corps de texte reste en Nunito/système, plus lisible en petit. */
+/* La typo « atelier » : Barlow Condensed sur tout ce qui est titre, bouton,
+   étiquette et chiffre. Le corps de texte reste en Barlow, plus lisible en
+   petit corps. Aucune des deux n'a de terminaison arrondie — c'est la condition
+   pour que le chanfrein des plaques veuille dire quelque chose. */
 .btn, .chip, .tab, .tabbtn, .sheet-title, .roster-title, .part-name, .vs-name,
 .result-title, .hud-name, .machine-name, .shop-name, .cp-name, .sl-name,
 .logo-sub, .logo-tag, .logo-word, .brand, .tile, .battle-msg, .battle-toast,
 .intro-name, .intro-vs, .vs-badge, .gauntlet-banner, .bet-name, .bet-odds,
 .rc-name, .reward-tag, .slot-tag, .set-chip, .btn-badge, .part-level,
 #reward-name, #profile-input, .pstat, .inv-item .nm, .crate-part-name {
-  font-family: 'Baloo 2', 'Nunito', system-ui, sans-serif;
+  font-family: 'Barlow Condensed', 'Barlow', system-ui, sans-serif;
 }
 
 #app { height: 100%; position: relative; }
@@ -194,7 +220,7 @@ body {
    dégradé par-dessus (background-clip:text peint le fond en premier).
    --------------------------------------------------------------------------- */
 .ink-title {
-  font-family: 'Baloo 2', sans-serif; font-weight: 800;
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 800;
   color: var(--cream);
   text-shadow:
     0 2px 0 #0E0A08, 0 3px 0 rgba(0,0,0,.85),
@@ -587,14 +613,15 @@ body {
 .hub-actions { display: flex; gap: 8px; width: 100%; }
 .hub-actions #hub-fight { flex: 1; }
 #hub-fight { width: 100%; }
-#hub-quick { flex: 0 0 auto; padding: 13px 14px; font-size: 13px; }
+#hub-quick { flex: 0 0 68px; }
+#hub-fight { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* tuiles du hub (conservées : le JS peut les réactiver) */
 .hub-tiles { display: flex; gap: 8px; width: 100%; }
 .hub-tile {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
   padding: 10px 4px 8px; border: 0; cursor: pointer; border-radius: 11px;
-  font-family: 'Baloo 2', sans-serif; font-size: 12px; font-weight: 800;
+  font-family: 'Barlow Condensed', sans-serif; font-size: 12px; font-weight: 800;
   text-transform: uppercase; letter-spacing: .1em; color: var(--cream);
   background:
     linear-gradient(179deg, rgba(255,205,150,.09), transparent 38%),
@@ -664,28 +691,34 @@ body {
 }
 
 /* bannière du défi du jour : ruban de signalisation */
+/* DISCIPLINE DE L'ACCENT — le défi du jour était une dalle ambre pleine
+   largeur : l'information la moins importante de l'écran en était l'élément le
+   plus lumineux, devant le bouton d'action et devant la machine. C'est une
+   plaque d'acier avec un filet ambre sur le chant. Elle se voit, elle ne
+   gouverne plus. */
 .daily-banner {
-  display: block; width: calc(100% - 24px); margin: 0 12px 8px;
-  padding: 10px 13px; border: 0; border-radius: 10px; text-align: left; cursor: pointer;
-  font-family: inherit; font-size: 12.5px; font-weight: 800; letter-spacing: .02em;
-  color: #2B1103; text-shadow: 0 1px 0 rgba(255,240,190,.45);
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.30), transparent 36%),
-    linear-gradient(180deg, #FFE08A, #FFC12A 46%, #D98905 100%);
-  box-shadow: inset 0 1.5px 0 rgba(255,252,232,.85), inset 0 -2px 0 rgba(90,55,0,.5),
-    inset 0 0 0 1px rgba(120,74,6,.85), 0 3px 0 #4E3103, 0 4px 0 #120C02,
-    0 10px 18px -10px rgba(255,170,30,.4);
+  position: relative; display: block; width: calc(100% - 24px); margin: 0 12px 8px;
+  padding: 10px 13px 11px 17px; border: 0; text-align: left; cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 600; letter-spacing: .02em;
+  color: var(--cream-2); text-shadow: 0 1px 0 rgba(0,0,0,.9);
+  background: var(--brushed), linear-gradient(180deg, #262019, #131110);
+  box-shadow: inset 0 1.5px 0 rgba(255,214,170,.18), inset 0 -2px 0 rgba(0,0,0,.85),
+    inset 0 0 0 1px rgba(0,0,0,.7);
   transition: transform .07s steps(2);
 }
-.daily-banner .ic { color: #4A2A02; }
+.daily-banner::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+  background: linear-gradient(180deg, #FFE685, #FFC400 46%, #B85D00);
+  box-shadow: 0 0 8px rgba(255,175,40,.45);
+}
+.daily-banner .ic { color: var(--signal); }
 .daily-banner:active { transform: translateY(3px); }
 /* défi accompli : la plaque refroidit, elle redevient de l'acier */
 .daily-banner.done {
-  color: var(--muted); text-shadow: 0 1px 0 rgba(0,0,0,.8); pointer-events: none;
-  background: var(--brushed), linear-gradient(180deg, #1D1815, #121010);
-  box-shadow: inset 0 1px 0 var(--edge), inset 0 -1px 0 rgba(0,0,0,.8),
-    inset 0 0 0 1px rgba(0,0,0,.65);
+  color: var(--muted); pointer-events: none;
+  background: var(--brushed), linear-gradient(180deg, #1A1613, #110F0D);
 }
+.daily-banner.done::before { background: linear-gradient(180deg, #B7EA5A, #3E7A12); box-shadow: none; }
 .daily-banner.done .ic { color: var(--ok); }
 
 /* --- baie d'aperçu 3D : la fosse du garage --- */
@@ -737,11 +770,11 @@ body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .order-txt b {
-  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 11px;
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 11px;
   letter-spacing: .08em; color: var(--signal); margin-right: 6px;
 }
 .order-prog {
-  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 13px;
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 13px;
   color: var(--signal-hi); font-variant-numeric: tabular-nums;
 }
 
@@ -755,12 +788,12 @@ body {
     inset 0 0 0 1px rgba(0,0,0,.6);
 }
 .plate b {
-  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 14px;
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 14px;
   letter-spacing: .05em; color: var(--cream); line-height: 1.05; white-space: nowrap;
   text-shadow: 0 1px 0 rgba(0,0,0,.9);
 }
 .plate small {
-  font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 11px;
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 11px;
   letter-spacing: .12em; color: var(--muted); white-space: nowrap;
 }
 
@@ -783,7 +816,7 @@ body {
   box-shadow: 1px 0 0 rgba(255,214,170,.10);
 }
 .stencil {
-  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 11px;
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 12px;
   line-height: 1; letter-spacing: .16em; text-transform: uppercase;
   color: var(--muted); text-shadow: 0 1px 0 rgba(255,214,170,.07);
 }
@@ -794,14 +827,14 @@ body {
 .pw { flex: 1; min-width: 0; }
 .pw-val { display: flex; align-items: baseline; gap: 7px; margin-top: 3px; }
 .pw-val b {
-  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 32px;
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 32px;
   line-height: .92; letter-spacing: -.01em; color: var(--cream);
   font-variant-numeric: tabular-nums;
   text-shadow: 0 2px 0 #0E0A08, 0 3px 0 rgba(0,0,0,.85), 0 0 18px rgba(255,138,31,.45);
 }
 .delta {
   display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px 3px;
-  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 11.5px;
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 11.5px;
   font-variant-numeric: tabular-nums;
   clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
 }
@@ -811,7 +844,7 @@ body {
 .reads { display: flex; flex-direction: column; gap: 8px; width: 108px; flex: 0 0 108px; }
 .read { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 6px; }
 .read b {
-  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 16px;
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 16px;
   color: var(--cream); font-variant-numeric: tabular-nums; text-shadow: 0 1px 0 rgba(0,0,0,.9);
 }
 .rbar {
@@ -840,7 +873,7 @@ body {
 .nrj > .stencil { flex: none; }
 .nrj-track { flex: 1; min-width: 0; display: flex; gap: 3px; height: 15px; }
 .nrj-val {
-  flex: none; font-family: 'Baloo 2', sans-serif; font-size: 12px; font-weight: 800;
+  flex: none; font-family: 'Barlow Condensed', sans-serif; font-size: 12px; font-weight: 800;
   color: var(--muted); font-variant-numeric: tabular-nums;
 }
 .nrj-val b { font-size: 15px; color: var(--signal-hi); text-shadow: 0 1px 0 #000, 0 0 8px rgba(255,180,40,.45); }
@@ -940,14 +973,14 @@ body {
 .slot.k-weapon .slot-well { clip-path: polygon(50% 0, 100% 26%, 100% 74%, 50% 100%, 0 74%, 0 26%); }
 .slot.k-gadget .slot-well { clip-path: polygon(22% 0, 78% 0, 100% 22%, 100% 78%, 78% 100%, 22% 100%, 0 78%, 0 22%); }
 .slot-tag {
-  margin-top: 4px; font-family: 'Baloo 2', sans-serif; font-weight: 800;
-  font-size: 11px; line-height: 1; letter-spacing: .03em; text-transform: uppercase;
+  margin-top: 4px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700;
+  font-size: 12px; line-height: 1; letter-spacing: .03em; text-transform: uppercase;
   color: var(--muted); text-shadow: 0 1px 0 rgba(0,0,0,.9);
 }
 .slot.filled .slot-tag { color: var(--cream-2); }
 .slot-lv {
   position: absolute; top: -5px; right: -3px; z-index: 3; padding: 1px 5px 2px;
-  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 11px; line-height: 1.15;
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 11px; line-height: 1.15;
   color: var(--cream);
   background: linear-gradient(180deg, #3A322B, #151210);
   box-shadow: inset 0 1px 0 rgba(255,214,170,.25), inset 0 0 0 1px rgba(0,0,0,.8), 0 2px 4px -2px #000;
@@ -1007,14 +1040,14 @@ body {
 .tab {
   position: relative; flex: 1; height: 40px; border: 0; cursor: pointer;
   display: flex; align-items: center; justify-content: center; gap: 4px;
-  font-family: 'Baloo 2', sans-serif; font-size: 11.5px; font-weight: 800;
+  font-family: 'Barlow Condensed', sans-serif; font-size: 13px; font-weight: 700;
   letter-spacing: .05em; text-transform: uppercase; color: var(--muted);
   background: transparent;
   clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
   transition: color .1s steps(2);
 }
 .tab .ic { width: 17px; height: 17px; flex: none; }
-.tab u { text-decoration: none; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tab u { text-decoration: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 /* la zone tactile déborde le dessin : 40px vus, 48px touchables */
 .tab::after { content: ''; position: absolute; inset: -4px; }
 /* onglet actif : plaque chauffée */
@@ -1101,7 +1134,7 @@ body {
    être manqué. C'est la réponse à « est-ce mieux que ce que j'ai déjà ? ». */
 .vband {
   position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 4px 4px;
-  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 11.5px;
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 11.5px;
   letter-spacing: .06em; font-variant-numeric: tabular-nums;
 }
 .vband.up { color: #D8FFA4; background: linear-gradient(180deg, rgba(62,122,18,.85), rgba(30,62,6,.9)); box-shadow: inset 0 1px 0 rgba(180,240,110,.35); }
@@ -1155,6 +1188,13 @@ body {
 /* UNE seule action dominante : « rapide » et « paris » sont des outils, pas
    des concurrents du championnat. Trois boutons de même poids, c'était trois
    fois aucune décision. */
+/* les outils carrés valent pour le QG comme pour le garage */
+.btn.tool {
+  flex: 0 0 62px; flex-direction: column; gap: 3px; min-width: 0;
+  padding: 9px 2px 8px; font-size: 11.5px; letter-spacing: .04em;
+}
+.btn.tool .ic { width: 20px; height: 20px; flex: none; }
+.btn.tool span { line-height: 1; }
 .actions .btn.tool {
   flex: 0 0 58px; flex-direction: column; gap: 3px; min-width: 0;
   padding: 8px 2px 7px; font-size: 10.5px; letter-spacing: .04em;
@@ -1256,6 +1296,9 @@ body {
 .sheet-actions-row { display: flex; gap: 8px; }
 .sheet-actions .btn { flex: 1; font-size: 12.5px; padding: 12px 6px; }
 .sheet-actions .btn.full { width: 100%; padding: 15px 8px; font-size: 15px; }
+/* ACTION DESTRUCTIVE : une plaque CREUSÉE à liseré rouge, jamais un pavé rouge
+   plein — un pavé rouge attire le pouce autant que le bouton principal, ce qui
+   est exactement l'inverse de ce qu'on veut d'une action irréversible. */
 .btn.scrap {
   color: #FFB6A6;
   background: linear-gradient(180deg, rgba(38,20,16,.95), rgba(16,10,9,.95));
@@ -1264,6 +1307,7 @@ body {
   text-shadow: 0 1px 0 rgba(0,0,0,.9);
 }
 .btn.scrap:disabled { color: var(--ghost); box-shadow: inset 0 0 0 1.5px rgba(255,59,34,.14); }
+.btn.scrap.full { width: 100%; }
 
 /* LE BLOC DE COMPARAISON : ce qui est monté aujourd'hui, et l'écart chiffré. */
 .part-compare {
@@ -1274,7 +1318,7 @@ body {
   box-shadow: inset 0 1px 0 rgba(255,214,170,.14), inset 0 0 0 1px rgba(0,0,0,.7);
 }
 .part-compare .pc-lab {
-  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 11px;
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 11px;
   letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
 }
 .part-compare .pc-nm {
@@ -1282,7 +1326,7 @@ body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .part-compare .pc-vd {
-  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 15px;
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 15px;
   font-variant-numeric: tabular-nums;
 }
 .part-compare .pc-vd.up { color: var(--ok); }
@@ -1348,7 +1392,7 @@ body {
 /* micro-étiquettes PASSIF / ACTIF */
 .cp-tag {
   display: inline-block; margin-right: 5px; padding: 1px 6px 2px; border-radius: 4px;
-  font-family: 'Baloo 2', sans-serif; font-size: 8px; font-weight: 800;
+  font-family: 'Barlow Condensed', sans-serif; font-size: 8px; font-weight: 800;
   color: #1B1206;
   background: linear-gradient(180deg, #C9BCA6, #8C8071);
   box-shadow: 0 1px 0 rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.4);
@@ -1536,7 +1580,7 @@ body {
 .bet-amounts { display: flex; gap: 8px; justify-content: center; padding: 12px 12px 4px; }
 .bet-chip {
   min-width: 62px; padding: 9px 0; border: 0; border-radius: 9px; cursor: pointer;
-  font-family: 'Baloo 2', sans-serif; font-size: 14px; font-weight: 800; color: var(--cream);
+  font-family: 'Barlow Condensed', sans-serif; font-size: 14px; font-weight: 800; color: var(--cream);
   font-variant-numeric: tabular-nums; text-shadow: 0 1px 0 rgba(0,0,0,.9);
   background: var(--brushed), linear-gradient(180deg, #322B24, #1A1512);
   box-shadow: inset 0 1.5px 0 var(--edge), inset 0 -2px 0 rgba(0,0,0,.85),
@@ -1946,7 +1990,7 @@ body {
 /* intertitre au pochoir */
 .shop-section {
   display: flex; align-items: center; gap: 7px; margin-top: 12px;
-  font-family: 'Baloo 2', sans-serif; font-size: 11px; font-weight: 800;
+  font-family: 'Barlow Condensed', sans-serif; font-size: 11px; font-weight: 800;
   color: var(--muted); text-shadow: 0 1px 0 rgba(0,0,0,.85);
 }
 .shop-section .ic { width: 1.3em; height: 1.3em; color: var(--amber); }
@@ -2218,23 +2262,28 @@ body {
 }
 .tabbtn {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px;
-  padding: 7px 2px 5px; border: 0; border-radius: 10px; cursor: pointer;
-  font-family: 'Baloo 2', sans-serif; font-size: 10px; font-weight: 800;
+  padding: 8px 2px 6px; border: 0; cursor: pointer; position: relative;
+  font-family: 'Barlow Condensed', sans-serif; font-size: 12px; font-weight: 700;
   letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
   background: transparent;
-  transition: transform .08s steps(1), color .08s steps(1);
+  transition: color .08s steps(1);
 }
-.tabbtn .ic { width: 1.7em; height: 1.7em; opacity: .6; }
-/* onglet actif : plaque chauffée qui sort de la console */
+.tabbtn .ic { width: 1.7em; height: 1.7em; opacity: .55; }
+/* DISCIPLINE DE L'ACCENT : trois zones ambre par écran, pas davantage.
+   L'onglet actif était une grosse plaque orange qui disputait le point focal au
+   bouton d'action. Il se signale maintenant par un RAIL de lumière et par sa
+   gorge éclairée — c'est suffisant, et l'ambre plein reste au seul CTA. */
 .tabbtn.active {
-  color: #2B1103; text-shadow: 0 1px 0 rgba(255,230,180,.45);
-  background: linear-gradient(180deg, #FFC968 0%, #FF9520 42%, #E0680B 100%);
-  box-shadow: inset 0 1.5px 0 rgba(255,246,214,.8), inset 0 -2px 0 rgba(90,28,0,.5),
-    0 3px 0 #572004, 0 4px 0 #000, 0 8px 14px -7px rgba(255,120,20,.6);
-  transform: translateY(-5px);
+  color: var(--cream);
+  background: linear-gradient(180deg, rgba(255,150,60,.16), rgba(255,120,20,.02) 62%, transparent);
 }
-.tabbtn.active .ic { opacity: 1; }
-.tabbtn:active { transform: translateY(0); }
+.tabbtn.active::before {
+  content: ''; position: absolute; left: 12%; right: 12%; top: 0; height: 3px;
+  background: linear-gradient(90deg, transparent, var(--amber-hi), var(--amber), transparent);
+  box-shadow: 0 0 10px -1px rgba(255,150,50,.85);
+}
+.tabbtn.active .ic { opacity: 1; color: var(--amber-hi); }
+.tabbtn:active { color: var(--cream-2); }
 #app.with-tabs .screen { padding-bottom: calc(64px + var(--sab)); }
 #app.with-tabs .tabbar { padding-bottom: calc(8px + var(--sab)); }
 #app.with-tabs #screen-hub .hub-bottom { padding-bottom: 12px; }
@@ -2300,14 +2349,14 @@ body {
 
 /* taille de chanfrein proportionnée à l'objet : une puce de 20 px coupée à
    9 px n'est plus qu'un losange */
-.btn-badge, .cp-tag, .rc-diff, .rc-next, .reward-tag, .bet-odds,
-.logo-tag, .result-progress, .sticker-swatch .sticker-price { --ch: 4px; }
-.chip, .toggle, .load-tip, .copilot-card .cp-lock, .part-statlist .ps,
-.result-bit, .result-league, .vs-stake { --ch: 6px; }
-.close, .close-round, .sticker-swatch, .tabbtn, .tile, .hub-tile,
-.daily-banner, .profile-chip, .crate-emoji, .pstat, #profile-input,
-.load-track, .grabber { --ch: 8px; }
-.btn.xl, .vs-card, .reward-part, .result-rewards, .part-thumb-lg { --ch: 13px; }
+/* TROIS valeurs, jamais davantage. Un chanfrein qui varie de 4 à 15 px au gré
+   des composants, c'est de l'aléatoire déguisé en système : petit / moyen /
+   grand, et rien d'autre. */
+.btn-badge, .cp-tag, .rc-diff, .rc-next, .reward-tag, .bet-odds, .logo-tag,
+.result-progress, .sticker-swatch .sticker-price, .chip, .toggle, .load-tip,
+.copilot-card .cp-lock, .part-statlist .ps, .result-bit, .result-league,
+.vs-stake, .grabber { --ch: 6px; }
+.btn.xl, .vs-card, .reward-part, .result-rewards, .part-thumb-lg { --ch: 20px; }
 
 /* la profondeur perdue avec les ombres portées revient par la découpe */
 .btn { filter: drop-shadow(0 3px 0 rgba(0,0,0,.75)) drop-shadow(0 8px 12px rgba(0,0,0,.55)); }

@@ -1,5 +1,5 @@
 // Service worker : jeu 100% jouable hors-ligne, mises à jour propagées.
-const CACHE = 'maks-v21';
+const CACHE = 'maks-v22';
 const ASSETS = [
   // modèles 3D (Kenney, CC0)
   'models/car/body-classic.glb', 'models/car/body-pony.glb', 'models/car/body-surfer.glb',
@@ -19,7 +19,9 @@ const ASSETS = [
   'js/lib/postprocessing/ShaderPass.js', 'js/lib/postprocessing/UnrealBloomPass.js',
   'js/lib/postprocessing/Pass.js', 'js/lib/postprocessing/MaskPass.js', 'js/lib/postprocessing/OutputPass.js',
   'js/lib/shaders/CopyShader.js', 'js/lib/shaders/LuminosityHighPassShader.js', 'js/lib/shaders/OutputShader.js',
-  'fonts/baloo-2-latin-400-normal.woff2', 'fonts/baloo-2-latin-700-normal.woff2', 'fonts/baloo-2-latin-800-normal.woff2',
+  'fonts/barlow-latin-500-normal.woff2', 'fonts/barlow-latin-600-normal.woff2', 'fonts/barlow-latin-700-normal.woff2',
+  'fonts/barlow-condensed-latin-600-normal.woff2', 'fonts/barlow-condensed-latin-700-normal.woff2',
+  'fonts/barlow-condensed-latin-800-normal.woff2',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
 ];
 

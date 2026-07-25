@@ -374,7 +374,7 @@ function garageFloorTexture() {
     x.setLineDash([]);
     // pochoir texte
     x.fillStyle = 'rgba(150,110,10,.38)';
-    x.font = '800 30px "Baloo 2", sans-serif';
+    x.font = '800 30px "Barlow Condensed", sans-serif';
     x.textAlign = 'center';
     x.fillText('ZONE 01  ·  ATELIER MAKS', 0, 262);
     x.restore();
@@ -508,9 +508,9 @@ function liftPlateTexture() {
     x.translate(C, C);
     x.textAlign = 'center';
     x.fillStyle = 'rgba(255,196,0,.34)';
-    x.font = '800 40px "Baloo 2", sans-serif';
+    x.font = '800 40px "Barlow Condensed", sans-serif';
     x.fillText('LIFT 01', 0, -108);
-    x.font = '800 22px "Baloo 2", sans-serif';
+    x.font = '800 22px "Barlow Condensed", sans-serif';
     x.fillStyle = 'rgba(203,184,156,.30)';
     x.fillText('MAX 2.4 t', 0, 132);
     // flèches de centrage
@@ -818,7 +818,7 @@ export function addHubDecor(scene) {
         x.fillRect(0, 0, w, h);
         x.textAlign = 'center';
         x.textBaseline = 'middle';
-        x.font = '800 118px "Baloo 2", sans-serif';
+        x.font = '800 118px "Barlow Condensed", sans-serif';
         // lettres néon : halo ambré puis cœur crème
         x.save();
         x.translate(w / 2, h * 0.44);
@@ -832,7 +832,7 @@ export function addHubDecor(scene) {
         x.fillStyle = '#FFF6DA';
         x.fillText('MAKS', 0, 0);
         x.restore();
-        x.font = '800 30px "Baloo 2", sans-serif';
+        x.font = '800 30px "Barlow Condensed", sans-serif';
         x.fillStyle = 'rgba(203,184,156,.85)';
         x.fillText('A T E L I E R   ·   N U I T', w / 2, h * 0.83);
         // cadre + rivets
@@ -1027,7 +1027,7 @@ export function addHubDecor(scene) {
     x.fillStyle = 'rgba(255,138,31,.85)';
     x.fillRect(0, 96, w, 34);
     x.fillStyle = '#1B1206';
-    x.font = '800 26px "Baloo 2", sans-serif';
+    x.font = '800 26px "Barlow Condensed", sans-serif';
     x.textAlign = 'center';
     x.fillText('OIL 20W', w / 2, 120);
     // rouille et coulures

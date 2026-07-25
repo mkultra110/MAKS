@@ -372,7 +372,7 @@ function wordTexture(word) {
   x.closePath();
   x.fill(); x.stroke();
   // le mot
-  x.font = "800 56px 'Baloo 2', sans-serif";
+  x.font = "800 56px 'Barlow Condensed', sans-serif";
   x.textAlign = 'center'; x.textBaseline = 'middle';
   x.strokeStyle = '#26183A'; x.lineWidth = 10; x.lineJoin = 'round';
   x.strokeText(word, 0, 2);
@@ -1664,7 +1664,7 @@ function renderOverlay(battle) {
   const fs = Math.round(15 * battle.dpr);
   for (const f of battle.floaters) {
     const [sx, sy] = project(f.x, f.y, f.z);
-    ctx.font = `800 ${Math.round(fs * (f.scale || 1))}px 'Baloo 2', sans-serif`;
+    ctx.font = `800 ${Math.round(fs * (f.scale || 1))}px 'Barlow Condensed', sans-serif`;
     ctx.globalAlpha = Math.min(1, f.life * 2.2);
     ctx.strokeStyle = '#26183A';
     ctx.lineWidth = 5;
